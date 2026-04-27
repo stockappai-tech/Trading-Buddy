@@ -1,1 +1,2 @@
 # Trading-Buddy
+# Trading-Buddy
