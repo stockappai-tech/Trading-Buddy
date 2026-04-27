@@ -46,7 +46,6 @@ async function startServer() {
       res.cookie(COOKIE_NAME, token, { ...getSessionCookieOptions(req), maxAge: ONE_YEAR_MS });
       res.redirect(302, "/");
     });
-    console.log("[Dev] Auto-login available at http://localhost:3000/api/dev/login");
   }
 
   // OAuth callback under /api/oauth/callback
@@ -79,6 +78,9 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
+    if (!process.env.DATABASE_URL) {
+      console.log(`[Dev] Auto-login available at http://localhost:${port}/api/dev/login`);
+    }
   });
 }
 
