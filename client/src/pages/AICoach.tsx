@@ -70,6 +70,13 @@ const PERSONA_TO_FORGE_VOICE: Record<VoicePersona, "onyx" | "fable" | "nova" | "
   female2: "shimmer", // clear, bright female
 };
 
+const PERSONA_TO_TTS_NAME: Record<VoicePersona, "adam" | "george" | "sarah" | "laura"> = {
+  male1: "adam",
+  male2: "george",
+  female1: "sarah",
+  female2: "laura",
+};
+
 /** Fallback: pick the best available browser voice for a persona. */
 function pickVoice(persona: VoicePersona): SpeechSynthesisVoice | null {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) return null;
@@ -77,12 +84,12 @@ function pickVoice(persona: VoicePersona): SpeechSynthesisVoice | null {
   if (!voices.length) return null;
   const cfg = VOICE_PERSONAS[persona];
   for (const priority of cfg.voicePriority) {
-    const match = voices.find((v) => v.name.toLowerCase().includes(priority.toLowerCase()));
+    const match = voices.find((v) => v.name.toLowerCase().includes(priority.toLowerCase()) && v.lang.toLowerCase().startsWith("en"));
     if (match) return match;
   }
   const enVoices = voices.filter((v) => v.lang.startsWith("en"));
   if (cfg.gender === "M") {
-    const male = enVoices.find((v) => /male|man|guy|david|mark|george|alex|daniel|fred/i.test(v.name));
+    const male = enVoices.find((v) => /male|man|guy|david|mark|george|alex|daniel|fred|tom|aaron|nathan/i.test(v.name));
     if (male) return male;
   } else {
     const female = enVoices.find((v) => /female|woman|zira|samantha|victoria|karen|moira|jenny/i.test(v.name));
@@ -283,11 +290,8 @@ export default function AICoach() {
   const isPremium = prefs?.isPremium || false;
 
   // ─── Speak ────────────────────────────────────────────────────────────────
-  // 1. Starts browser speech synthesis IMMEDIATELY (synchronous) so voice
-  //    always plays without waiting — respects the browser's user-gesture window.
-  // 2. Simultaneously fires Forge TTS (neural voices) in the background.
-  //    If it comes back successfully, the browser speech is cancelled and the
-  //    human-sounding neural audio plays instead.
+  // Prefer server-side neural audio. Browser speech is only a last-resort fallback
+  // because OS voices are often robotic and can mismatch the selected persona.
   const speak = useCallback(async (text: string, overridePersona?: VoicePersona) => {
     if (!ttsEnabled || !text.trim()) return;
     if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
@@ -297,29 +301,13 @@ export default function AICoach() {
     const clean = stripMarkdown(text);
     const cfg = VOICE_PERSONAS[persona];
     const forgeVoice = PERSONA_TO_FORGE_VOICE[persona];
+    const ttsPersona = PERSONA_TO_TTS_NAME[persona];
     const modeSpeed = selectedMode === "sergeant" ? 1.05 : selectedMode === "expert" ? 0.92 : 1.0;
+    setIsSpeaking(true);
 
-    // ── Step 1: browser speech starts synchronously (always works) ──
-    let neuralTookOver = false;
-    if ("speechSynthesis" in window) {
-      const utterance = new SpeechSynthesisUtterance(clean);
-      const voice = pickVoice(persona);
-      if (voice) utterance.voice = voice;
-      utterance.lang = "en-US";
-      utterance.pitch = cfg.pitch;
-      utterance.rate = cfg.rate * modeSpeed;
-      utterance.volume = 1.0;
-      utterance.onend = () => { if (!neuralTookOver) setIsSpeaking(false); };
-      utterance.onerror = () => { if (!neuralTookOver) setIsSpeaking(false); };
-      window.speechSynthesis.speak(utterance);
-      setIsSpeaking(true);
-    }
-
-    // ── Step 2: try Forge TTS neural audio in the background ──
     try {
-      const result = await ttsMutation.mutateAsync({ text: clean, voice: forgeVoice, speed: modeSpeed });
-      neuralTookOver = true;
-      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+      const result = await ttsMutation.mutateAsync({ text: clean, voice: forgeVoice, persona: ttsPersona, speed: modeSpeed });
+      if (!result.audioBase64) throw new Error("No TTS audio returned");
       const binary = atob(result.audioBase64);
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -330,13 +318,25 @@ export default function AICoach() {
       audio.onended = () => { setIsSpeaking(false); URL.revokeObjectURL(url); if (audioRef.current === audio) audioRef.current = null; };
       audio.onerror = () => { setIsSpeaking(false); URL.revokeObjectURL(url); if (audioRef.current === audio) audioRef.current = null; };
       audio.play().catch(() => {
-        neuralTookOver = false;
         setIsSpeaking(false);
         URL.revokeObjectURL(url);
         if (audioRef.current === audio) audioRef.current = null;
       });
     } catch {
-      // Forge TTS not available — browser speech continues uninterrupted
+      if ("speechSynthesis" in window) {
+        const utterance = new SpeechSynthesisUtterance(clean);
+        const voice = pickVoice(persona);
+        if (voice) utterance.voice = voice;
+        utterance.lang = "en-US";
+        utterance.pitch = cfg.pitch;
+        utterance.rate = cfg.rate * modeSpeed;
+        utterance.volume = 1.0;
+        utterance.onend = () => setIsSpeaking(false);
+        utterance.onerror = () => setIsSpeaking(false);
+        window.speechSynthesis.speak(utterance);
+      } else {
+        setIsSpeaking(false);
+      }
     }
   }, [ttsEnabled, voicePersona, selectedMode, ttsMutation]);
 

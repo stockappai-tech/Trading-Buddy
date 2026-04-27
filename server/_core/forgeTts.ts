@@ -69,7 +69,7 @@ export async function synthesizeSpeechForge(
   const truncated = clean.length > 4096 ? clean.slice(0, 4093) + "..." : clean;
 
   const payload = {
-    model: "tts-1",
+    model: "tts-1-hd",
     input: truncated,
     voice: opts.voice ?? "nova",
     speed: opts.speed ?? 1.0,

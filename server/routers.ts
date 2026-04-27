@@ -7,6 +7,8 @@ import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { invokeLLM } from "./_core/llm";
 import { transcribeAudio } from "./_core/voiceTranscription";
 import { synthesizeSpeechForge, type ForgeTtsVoice } from "./_core/forgeTts";
+import { ELEVENLABS_VOICES, synthesizeSpeech as synthesizeSpeechElevenLabs } from "./_core/elevenLabsTts";
+import { synthesizeSpeech as synthesizeSpeechGoogle, type GoogleTtsVoice } from "./_core/googleTts";
 import { correctTickers } from "@shared/tickerCorrection";
 import { notifyOwner } from "./_core/notification";
 import {
@@ -41,6 +43,38 @@ import {
   removeFromWatchlist,
 } from "./db";
 import { ENV } from "./_core/env";
+
+type TtsPersona = "adam" | "george" | "sarah" | "laura";
+
+const PERSONA_TO_ELEVENLABS = {
+  adam: ELEVENLABS_VOICES.adam,
+  george: ELEVENLABS_VOICES.george,
+  sarah: ELEVENLABS_VOICES.sarah,
+  laura: ELEVENLABS_VOICES.laura,
+} as const;
+
+const PERSONA_TO_GOOGLE: Record<TtsPersona, GoogleTtsVoice> = {
+  adam: "en-US-Neural2-D",
+  george: "en-US-Neural2-J",
+  sarah: "en-US-Neural2-F",
+  laura: "en-US-Neural2-H",
+};
+
+const FORGE_TO_PERSONA: Record<ForgeTtsVoice, TtsPersona> = {
+  onyx: "adam",
+  echo: "adam",
+  fable: "george",
+  nova: "sarah",
+  shimmer: "laura",
+  alloy: "sarah",
+};
+
+const PERSONA_TO_FORGE: Record<TtsPersona, ForgeTtsVoice> = {
+  adam: "onyx",
+  george: "fable",
+  sarah: "nova",
+  laura: "shimmer",
+};
 
 // ─── Finnhub Market Data Helpers ─────────────────────────────────────────────
 
@@ -1750,20 +1784,55 @@ Return JSON with: { score: number (1-10), feedback: string (2-3 sentences, direc
     tts: protectedProcedure
       .input(z.object({
         text: z.string().max(5000),
-        // Forge TTS voice names: onyx (deep male), fable (British male), nova (warm female), shimmer (bright female)
+        // Forge TTS voice names are kept for backwards compatibility with older clients.
         voice: z.enum(["onyx", "fable", "nova", "shimmer", "alloy", "echo"]).default("nova"),
+        persona: z.enum(["adam", "george", "sarah", "laura"]).optional(),
         speed: z.number().min(0.25).max(4.0).default(1.0),
       }))
       .mutation(async ({ input }) => {
+        const forgeVoice = input.voice as ForgeTtsVoice;
+        const persona = input.persona ?? FORGE_TO_PERSONA[forgeVoice] ?? "sarah";
+        const errors: string[] = [];
+
+        if (ENV.elevenLabsApiKey) {
+          const result = await synthesizeSpeechElevenLabs({
+            text: input.text,
+            voiceId: PERSONA_TO_ELEVENLABS[persona],
+            stability: 0.38,
+            similarityBoost: 0.86,
+            style: 0.32,
+            speakerBoost: true,
+          });
+          if ("audioBase64" in result) {
+            return { audioBase64: result.audioBase64, provider: "elevenlabs" as const };
+          }
+          errors.push(result.error);
+        }
+
+        if (ENV.googleTtsApiKey) {
+          const result = await synthesizeSpeechGoogle({
+            text: input.text,
+            voice: PERSONA_TO_GOOGLE[persona],
+            speakingRate: input.speed,
+            pitch: persona === "adam" ? -2 : persona === "george" ? -1 : 0,
+          });
+          if ("audioBase64" in result) {
+            return { audioBase64: result.audioBase64, provider: "google" as const };
+          }
+          errors.push(result.error);
+        }
+
         const result = await synthesizeSpeechForge({
           text: input.text,
-          voice: input.voice as ForgeTtsVoice,
+          voice: PERSONA_TO_FORGE[persona],
           speed: input.speed,
         });
-        if ("error" in result) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
+        if ("audioBase64" in result) {
+          return { audioBase64: result.audioBase64, provider: "forge" as const };
         }
-        return { audioBase64: result.audioBase64 };
+
+        errors.push(result.error);
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: errors.join(" | ") });
       }),
 
     transcribe: protectedProcedure
