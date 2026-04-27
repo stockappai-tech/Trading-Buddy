@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(curl -s http://localhost:3000/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/api/dev/login)",
+      "Bash(curl -s http://localhost:3000/api/trpc/auth.me?batch=1)",
+      "Bash(curl -s \"http://localhost:3000/api/trpc/auth.me?batch=1&input=%7B%7D\")"
+    ]
+  }
+}

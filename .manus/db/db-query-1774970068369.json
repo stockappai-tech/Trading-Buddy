@@ -1,0 +1,13 @@
+{
+  "query": "SELECT @@sql_mode;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway05.us-east-1.prod.aws.tidbcloud.com --port 4000 --user DudnYU5DJGjDb7x.f55d5c05eef2 --database ABPfAgYoAEjhmeNLtca7tc --execute SELECT @@sql_mode;",
+  "rows": [
+    {
+      "@@sql_mode": "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION"
+    }
+  ],
+  "messages": [],
+  "stdout": "@@sql_mode\nONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION\n",
+  "stderr": "",
+  "execution_time_ms": 1033
+}
