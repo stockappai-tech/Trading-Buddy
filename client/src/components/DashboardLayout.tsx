@@ -33,6 +33,7 @@ import {
   History,
   TrendingUp,
   Bell,
+  CalendarCheck,
   TrendingDown,
   Zap,
 } from "lucide-react";
@@ -43,6 +44,7 @@ import { Button } from "./ui/button";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
+  { icon: CalendarCheck, label: "Daily Plan", path: "/plan" },
   { icon: Mic, label: "Record Session", path: "/record" },
   { icon: History, label: "Trade History", path: "/history" },
   { icon: Bot, label: "AI Coach", path: "/coach", premium: true },

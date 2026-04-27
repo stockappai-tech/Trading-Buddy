@@ -10,6 +10,7 @@ const AITradingAssistant = lazy(() => import("./pages/AITradingAssistant"));
 const Analytics = lazy(() => import("./pages/Analytics"));
 const Automation = lazy(() => import("./pages/Automation"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
+const DailyPlan = lazy(() => import("./pages/DailyPlan"));
 const Home = lazy(() => import("./pages/Home"));
 const MarketData = lazy(() => import("./pages/MarketData"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -33,6 +34,7 @@ function Router() {
       <Switch>
         <Route path="/" component={Home} />
         <Route path="/dashboard" component={Dashboard} />
+        <Route path="/plan" component={DailyPlan} />
         <Route path="/record" component={VoiceRecording} />
         <Route path="/history" component={TradeHistory} />
         <Route path="/coach" component={AICoach} />
