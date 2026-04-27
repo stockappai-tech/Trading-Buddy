@@ -36,6 +36,13 @@
       "when": 1775064951364,
       "tag": "0004_smooth_nick_fury",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1777319700000,
+      "tag": "0005_trader_profile",
+      "breakpoints": true
     }
   ]
 }

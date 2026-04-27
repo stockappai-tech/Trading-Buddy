@@ -34,12 +34,32 @@ export async function getUserByOpenId(openId: string): Promise<User | undefined>
 
 const _prefs = new Map<number, UserPreference>([[1, {
   id: 1, userId: 1, coachMode: "friend", accountSize: "10000.00", riskPerTrade: "1.00",
+  maxDailyLoss: null, tradingStyle: "day_trader", experienceLevel: "intermediate", mainWeakness: null,
+  primaryGoal: null, favoriteTickers: null, coachStrictness: "balanced",
   tradierToken: null, tradierAccountId: null, notificationsEnabled: true, isPremium: true, updatedAt: now(),
 }]]);
 
 export async function getOrCreatePreferences(userId: number): Promise<UserPreference> {
   if (!_prefs.has(userId)) {
-    _prefs.set(userId, { id: nextId(), userId, coachMode: "friend", accountSize: "10000.00", riskPerTrade: "1.00", tradierToken: null, tradierAccountId: null, notificationsEnabled: true, isPremium: false, updatedAt: now() });
+    _prefs.set(userId, {
+      id: nextId(),
+      userId,
+      coachMode: "friend",
+      accountSize: "10000.00",
+      riskPerTrade: "1.00",
+      maxDailyLoss: null,
+      tradingStyle: "day_trader",
+      experienceLevel: "intermediate",
+      mainWeakness: null,
+      primaryGoal: null,
+      favoriteTickers: null,
+      coachStrictness: "balanced",
+      tradierToken: null,
+      tradierAccountId: null,
+      notificationsEnabled: true,
+      isPremium: false,
+      updatedAt: now(),
+    });
   }
   return _prefs.get(userId)!;
 }

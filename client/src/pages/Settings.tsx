@@ -18,6 +18,13 @@ export default function Settings() {
 
   const [accountSize, setAccountSize] = useState("");
   const [riskPerTrade, setRiskPerTrade] = useState("");
+  const [maxDailyLoss, setMaxDailyLoss] = useState("");
+  const [tradingStyle, setTradingStyle] = useState<"scalper" | "day_trader" | "swing_trader" | "position_trader" | "options_trader">("day_trader");
+  const [experienceLevel, setExperienceLevel] = useState<"beginner" | "intermediate" | "advanced" | "professional">("intermediate");
+  const [mainWeakness, setMainWeakness] = useState("");
+  const [primaryGoal, setPrimaryGoal] = useState("");
+  const [favoriteTickers, setFavoriteTickers] = useState("");
+  const [coachStrictness, setCoachStrictness] = useState<"gentle" | "balanced" | "strict">("balanced");
   const [coachMode, setCoachMode] = useState<"sergeant" | "friend" | "expert">("friend");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [tradierAccountId, setTradierAccountId] = useState("");
@@ -32,6 +39,13 @@ export default function Settings() {
     if (prefs) {
       setAccountSize(prefs.accountSize ?? "");
       setRiskPerTrade(prefs.riskPerTrade ?? "");
+      setMaxDailyLoss(prefs.maxDailyLoss ?? "");
+      setTradingStyle((prefs.tradingStyle as typeof tradingStyle) ?? "day_trader");
+      setExperienceLevel((prefs.experienceLevel as typeof experienceLevel) ?? "intermediate");
+      setMainWeakness(prefs.mainWeakness ?? "");
+      setPrimaryGoal(prefs.primaryGoal ?? "");
+      setFavoriteTickers(prefs.favoriteTickers ?? "");
+      setCoachStrictness((prefs.coachStrictness as typeof coachStrictness) ?? "balanced");
       setCoachMode((prefs.coachMode as any) ?? "friend");
       setNotificationsEnabled(prefs.notificationsEnabled ?? true);
       setTradierAccountId(prefs.tradierAccountId ?? "");
@@ -63,6 +77,13 @@ export default function Settings() {
     updatePrefs.mutate({
       accountSize,
       riskPerTrade,
+      maxDailyLoss,
+      tradingStyle,
+      experienceLevel,
+      mainWeakness,
+      primaryGoal,
+      favoriteTickers,
+      coachStrictness,
       coachMode,
       notificationsEnabled,
       tradierAccountId,
@@ -148,6 +169,62 @@ export default function Settings() {
                 <label className="text-xs text-muted-foreground mb-1 block">Risk Per Trade (%)</label>
                 <Input type="number" value={riskPerTrade} onChange={(e) => setRiskPerTrade(e.target.value)} placeholder="1.0" className="bg-input border-border text-sm" />
               </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Max Daily Loss ($)</label>
+                <Input type="number" value={maxDailyLoss} onChange={(e) => setMaxDailyLoss(e.target.value)} placeholder="500" className="bg-input border-border text-sm" />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Coach Strictness</label>
+                <Select value={coachStrictness} onValueChange={(v) => setCoachStrictness(v as typeof coachStrictness)}>
+                  <SelectTrigger className="bg-input border-border text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-popover border-border">
+                    <SelectItem value="gentle">Gentle</SelectItem>
+                    <SelectItem value="balanced">Balanced</SelectItem>
+                    <SelectItem value="strict">Strict</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Trading Style</label>
+                <Select value={tradingStyle} onValueChange={(v) => setTradingStyle(v as typeof tradingStyle)}>
+                  <SelectTrigger className="bg-input border-border text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-popover border-border">
+                    <SelectItem value="scalper">Scalper</SelectItem>
+                    <SelectItem value="day_trader">Day Trader</SelectItem>
+                    <SelectItem value="swing_trader">Swing Trader</SelectItem>
+                    <SelectItem value="position_trader">Position Trader</SelectItem>
+                    <SelectItem value="options_trader">Options Trader</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Experience Level</label>
+                <Select value={experienceLevel} onValueChange={(v) => setExperienceLevel(v as typeof experienceLevel)}>
+                  <SelectTrigger className="bg-input border-border text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-popover border-border">
+                    <SelectItem value="beginner">Beginner</SelectItem>
+                    <SelectItem value="intermediate">Intermediate</SelectItem>
+                    <SelectItem value="advanced">Advanced</SelectItem>
+                    <SelectItem value="professional">Professional</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Main Weakness</label>
+              <Input value={mainWeakness} onChange={(e) => setMainWeakness(e.target.value)} placeholder="Revenge trading after losses" className="bg-input border-border text-sm" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Primary Goal</label>
+              <Input value={primaryGoal} onChange={(e) => setPrimaryGoal(e.target.value)} placeholder="Stay disciplined and grow consistency" className="bg-input border-border text-sm" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Favorite Tickers</label>
+              <Input value={favoriteTickers} onChange={(e) => setFavoriteTickers(e.target.value.toUpperCase())} placeholder="AAPL, NVDA, TSLA" className="bg-input border-border text-sm" />
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Default AI Coach Mode</label>

@@ -11,6 +11,7 @@ import { ELEVENLABS_VOICES, synthesizeSpeech as synthesizeSpeechElevenLabs } fro
 import { synthesizeSpeech as synthesizeSpeechGoogle, type GoogleTtsVoice } from "./_core/googleTts";
 import { correctTickers } from "@shared/tickerCorrection";
 import { notifyOwner } from "./_core/notification";
+import type { UserPreference } from "../drizzle/schema";
 import {
   createAlert,
   createSession,
@@ -648,6 +649,26 @@ function normalizeDateKey(date?: Date | string) {
   return d.toISOString().slice(0, 10);
 }
 
+function buildTraderProfileContext(prefs: UserPreference) {
+  const fields = [
+    ["Trading style", prefs.tradingStyle],
+    ["Experience level", prefs.experienceLevel],
+    ["Account size", prefs.accountSize ? `$${Number(prefs.accountSize).toLocaleString()}` : ""],
+    ["Risk per trade", prefs.riskPerTrade ? `${prefs.riskPerTrade}%` : ""],
+    ["Max daily loss", prefs.maxDailyLoss ? `$${Number(prefs.maxDailyLoss).toLocaleString()}` : ""],
+    ["Main weakness", prefs.mainWeakness],
+    ["Primary goal", prefs.primaryGoal],
+    ["Favorite tickers", prefs.favoriteTickers],
+    ["Coach strictness", prefs.coachStrictness],
+  ].filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== "");
+
+  if (fields.length === 0) return "";
+
+  return `\n\nTrader profile:\n${fields.map(([label, value]) => `- ${label}: ${value}`).join("\n")}
+
+Use this profile to personalize coaching. Tie advice to their risk limits, goal, trading style, and recurring weakness. If they are near or beyond a risk rule, call that out clearly. Do not repeat the full profile back unless asked.`;
+}
+
 // ─── Coach Personalities ──────────────────────────────────────────────────────
 
 const COACH_PROMPTS = {
@@ -689,6 +710,13 @@ export const appRouter = router({
           coachMode: z.enum(["sergeant", "friend", "expert"]).optional(),
           accountSize: z.string().optional(),
           riskPerTrade: z.string().optional(),
+          maxDailyLoss: z.string().optional(),
+          tradingStyle: z.enum(["scalper", "day_trader", "swing_trader", "position_trader", "options_trader"]).optional(),
+          experienceLevel: z.enum(["beginner", "intermediate", "advanced", "professional"]).optional(),
+          mainWeakness: z.string().max(255).optional(),
+          primaryGoal: z.string().max(255).optional(),
+          favoriteTickers: z.string().optional(),
+          coachStrictness: z.enum(["gentle", "balanced", "strict"]).optional(),
           notificationsEnabled: z.boolean().optional(),
           isPremium: z.boolean().optional(),
           tradierToken: z.string().optional(),
@@ -696,7 +724,18 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ ctx, input }) => {
-        await updatePreferences(ctx.user.id, input as any);
+        const data: Record<string, unknown> = { ...input };
+        for (const key of ["accountSize", "riskPerTrade", "maxDailyLoss", "mainWeakness", "primaryGoal", "favoriteTickers", "tradierToken", "tradierAccountId"]) {
+          if (data[key] === "") data[key] = null;
+        }
+        if (typeof data.favoriteTickers === "string") {
+          data.favoriteTickers = data.favoriteTickers
+            .split(",")
+            .map((symbol) => symbol.trim().toUpperCase())
+            .filter(Boolean)
+            .join(", ");
+        }
+        await updatePreferences(ctx.user.id, data as any);
         return { success: true };
       }),
   }),
@@ -1972,7 +2011,7 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
       .mutation(async ({ ctx, input }) => {
         const prefs = await getOrCreatePreferences(ctx.user.id);
         const coachMode = prefs.coachMode ?? "friend";
-        const systemPrompt = COACH_PROMPTS[coachMode];
+        const systemPrompt = COACH_PROMPTS[coachMode] + buildTraderProfileContext(prefs);
 
         const tradesText = input.trades
           .map((t: any) => `${t.symbol} ${t.side} ${t.quantity}@${t.entryPrice} → ${t.exitPrice ?? "open"} PnL: ${t.pnl ?? "N/A"}`)
@@ -2015,7 +2054,7 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
         }
 
         const coachMode = input.coachMode ?? prefs.coachMode ?? "friend";
-        const systemPrompt = COACH_PROMPTS[coachMode];
+        const systemPrompt = COACH_PROMPTS[coachMode] + buildTraderProfileContext(prefs);
 
         // ── News intent detection ──────────────────────────────────────────────
         // Detect patterns like: "news on AAPL", "what's happening with Tesla",
@@ -2118,13 +2157,14 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
 
     freeChat: protectedProcedure
       .input(z.object({ message: z.string().min(1) }))
-      .mutation(async ({ ctx: _ctx, input }) => {
+      .mutation(async ({ ctx, input }) => {
+        const prefs = await getOrCreatePreferences(ctx.user.id);
         // Limited free tier — basic responses without news context
         const response = await invokeLLM({
           messages: [
             {
               role: "system",
-              content: "You are a basic trading assistant. Provide brief, helpful trading tips and general market knowledge. Keep responses under 100 words. If asked about specific real-time news or prices, explain that live data is available in the Pro plan. Occasionally mention that premium coaching offers deeper analysis.",
+              content: "You are a basic trading assistant. Provide brief, helpful trading tips and general market knowledge. Keep responses under 100 words. If asked about specific real-time news or prices, explain that live data is available in the Pro plan. Occasionally mention that premium coaching offers deeper analysis." + buildTraderProfileContext(prefs),
             },
             { role: "user", content: input.message },
           ],
