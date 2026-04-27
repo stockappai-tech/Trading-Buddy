@@ -1,7 +1,24 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Mock the NewsAPI call to validate the key is set and the API responds
 describe("NewsAPI Integration", () => {
+  const mockFetch = vi.fn();
+  const originalNewsApiKey = process.env.NEWS_API_KEY;
+
+  beforeEach(() => {
+    process.env.NEWS_API_KEY = "test-news-api-key";
+    vi.stubGlobal("fetch", mockFetch);
+  });
+
+  afterEach(() => {
+    if (originalNewsApiKey) {
+      process.env.NEWS_API_KEY = originalNewsApiKey;
+    } else {
+      delete process.env.NEWS_API_KEY;
+    }
+    vi.unstubAllGlobals();
+    mockFetch.mockReset();
+  });
+
   it("should have NEWS_API_KEY set in environment", () => {
     const key = process.env.NEWS_API_KEY;
     expect(key).toBeTruthy();
@@ -10,10 +27,14 @@ describe("NewsAPI Integration", () => {
 
   it("should fetch financial news from NewsAPI", async () => {
     const key = process.env.NEWS_API_KEY;
-    if (!key) {
-      console.warn("NEWS_API_KEY not set, skipping live test");
-      return;
-    }
+    mockFetch.mockResolvedValue({
+      json: async () => ({
+        status: "ok",
+        totalResults: 1,
+        articles: [{ title: "Markets rally after earnings" }],
+      }),
+    });
+
     const res = await fetch(
       `https://newsapi.org/v2/everything?q=stock+market&pageSize=3&language=en&sortBy=publishedAt&apiKey=${key}`
     );

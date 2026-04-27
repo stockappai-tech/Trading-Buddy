@@ -93,6 +93,16 @@ function pickVoice(persona: VoicePersona): SpeechSynthesisVoice | null {
 
 const LS_VOICE_KEY = "tba_coach_voice";
 
+function getStoredVoicePersona(): VoicePersona {
+  if (typeof window === "undefined") return "female1";
+  try {
+    const stored = window.localStorage.getItem(LS_VOICE_KEY);
+    return stored && stored in VOICE_PERSONAS ? (stored as VoicePersona) : "female1";
+  } catch {
+    return "female1";
+  }
+}
+
 function stripMarkdown(text: string): string {
   return text
     .replace(/#{1,6}\s+/g, "")
@@ -257,16 +267,13 @@ export default function AICoach() {
   const [isThinking, setIsThinking] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [isListening, setIsListening] = useState(false);
-  const [voicePersona, setVoicePersona] = useState<VoicePersona>(() => {
-    return (localStorage.getItem(LS_VOICE_KEY) as VoicePersona) ?? "female1";
-  });
+  const [voicePersona, setVoicePersona] = useState<VoicePersona>(getStoredVoicePersona);
   const [newsArticles, setNewsArticles] = useState<Array<{
     headline: string; summary: string; url: string; source: string; datetime: number;
   }>>([]);
   const [newsTickerLabel, setNewsTickerLabel] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mediaRecorderRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const [, navigate] = useLocation();
 
   const { data: prefs } = trpc.preferences.get.useQuery();
@@ -322,7 +329,12 @@ export default function AICoach() {
       audioRef.current = audio;
       audio.onended = () => { setIsSpeaking(false); URL.revokeObjectURL(url); if (audioRef.current === audio) audioRef.current = null; };
       audio.onerror = () => { setIsSpeaking(false); URL.revokeObjectURL(url); if (audioRef.current === audio) audioRef.current = null; };
-      audio.play().catch(() => { neuralTookOver = false; });
+      audio.play().catch(() => {
+        neuralTookOver = false;
+        setIsSpeaking(false);
+        URL.revokeObjectURL(url);
+        if (audioRef.current === audio) audioRef.current = null;
+      });
     } catch {
       // Forge TTS not available — browser speech continues uninterrupted
     }
@@ -372,7 +384,8 @@ export default function AICoach() {
     try {
       stopSpeaking();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+      const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = mediaRecorder;
       const chunks: Blob[] = [];
 
@@ -383,7 +396,7 @@ export default function AICoach() {
         setIsListening(false);
         mediaRecorderRef.current = null;
 
-        const blob = new Blob(chunks, { type: "audio/webm" });
+        const blob = new Blob(chunks, { type: mimeType || "audio/webm" });
         if (blob.size < 1000) return;
 
         try {
@@ -431,7 +444,11 @@ export default function AICoach() {
 
   const handleVoiceChange = (persona: VoicePersona) => {
     setVoicePersona(persona);
-    localStorage.setItem(LS_VOICE_KEY, persona);
+    try {
+      window.localStorage.setItem(LS_VOICE_KEY, persona);
+    } catch {
+      // Voice selection still works for this session if storage is unavailable.
+    }
     stopSpeaking();
     const cfg = VOICE_PERSONAS[persona];
     speak(`Hi, I'm ${cfg.label}. I'll be your trading coach.`, persona);

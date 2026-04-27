@@ -1,4 +1,9 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+
+vi.hoisted(() => {
+  process.env.FINNHUB_API_KEY = process.env.FINNHUB_API_KEY ?? "test-finnhub-key";
+});
+
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 
