@@ -4,10 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
-import { exportSessionPdf } from "@/lib/pdfExport";
 import { Bot, BookmarkPlus, Download, ExternalLink, FileText, Heart, Mic, Newspaper, Star, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Streamdown } from "streamdown";
 import { toast } from "sonner";
 import { format, subDays, startOfDay } from "date-fns";
 import { useLocation } from "wouter";
@@ -25,6 +23,25 @@ function getMoodEmoji(note: string | null | undefined): string {
   if (n.includes('tired') || n.includes('exhausted') || n.includes('sleepy')) return '😴';
   if (n.includes('revenge') || n.includes('chasing') || n.includes('fomo')) return '🔥';
   return '💭';
+}
+
+function CoachFeedback({ content }: { content: string }) {
+  const lines = content.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+
+  return (
+    <div className="space-y-1.5">
+      {lines.map((line, index) => {
+        const text = line.replace(/^[-*]\s+/, "").replace(/\*\*(.*?)\*\*/g, "$1");
+        const isBullet = /^[-*]\s+/.test(line);
+
+        return (
+          <p key={index} className={isBullet ? "pl-3 before:content-['•'] before:mr-2" : ""}>
+            {text}
+          </p>
+        );
+      })}
+    </div>
+  );
 }
 
 type Tab = "watchlist" | "sessions";
@@ -107,6 +124,7 @@ export default function Sessions() {
   const handleExportPdf = async (sessionId: number) => {
     try {
       const data = await exportMutation.mutateAsync({ sessionId });
+      const { exportSessionPdf } = await import("@/lib/pdfExport");
       exportSessionPdf(data.session as any, data.trades as any);
       toast.success("PDF exported successfully");
     } catch (e: any) {
@@ -404,7 +422,7 @@ export default function Sessions() {
                       <div className="mt-3 pt-3 border-t border-border">
                         <p className="text-xs text-muted-foreground mb-1 font-semibold">AI Coach Feedback:</p>
                         <div className="text-xs text-foreground/80 prose-xs">
-                          <Streamdown>{session.coachFeedback}</Streamdown>
+                          <CoachFeedback content={session.coachFeedback} />
                         </div>
                       </div>
                     )}
