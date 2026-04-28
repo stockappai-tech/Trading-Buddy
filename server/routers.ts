@@ -2095,10 +2095,10 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
         const systemPrompt = COACH_PROMPTS[coachMode] + buildTraderProfileContext(prefs) + buildDailyPlanContext(input.dailyPlan);
 
         // ── News intent detection ──────────────────────────────────────────────
-        // Detect patterns like: "news on AAPL", "what's happening with Tesla",
-        // "latest news for NVDA", "tell me about Apple news"
-        const newsIntentRegex = /(?:news|latest|what(?:'s| is) happening|what(?:'s| is) going on|update|headlines?)\s+(?:on|for|about|with|regarding)?\s*([A-Z]{1,5}|[A-Za-z]{3,})/i;
-        const tickerOnlyRegex = /^(?:news|headlines?)\s+([A-Z]{2,5})$/i;
+        // Detect patterns like: "news on AAPL", "what's new with Google",
+        // "latest catalyst for NVDA", "tell me about Apple news"
+        const newsIntentRegex = /(?:news|latest|newest|what(?:'s| is) new|what(?:'s| is) happening|what(?:'s| is) going on|update|updates|headlines?|catalysts?)\s+(?:on|for|about|with|regarding|in)?\s*([A-Z]{1,5}|[A-Za-z][A-Za-z\s.&-]{1,30})/i;
+        const tickerOnlyRegex = /^(?:news|headlines?|updates?|catalysts?)\s+([A-Z]{2,5})$/i;
         const match = input.message.match(newsIntentRegex) || input.message.match(tickerOnlyRegex);
 
         // Also detect common company names → ticker mapping
@@ -2107,14 +2107,16 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
           amazon: "AMZN", tesla: "TSLA", nvidia: "NVDA", meta: "META",
           netflix: "NFLX", "s&p": "SPY", "s and p": "SPY", spy: "SPY",
           nasdaq: "QQQ", qqq: "QQQ", "dow jones": "DIA",
+          googl: "GOOGL", goog: "GOOGL",
         };
 
         let newsArticles: Array<{ headline: string; summary: string; url: string; source: string; datetime: number }> = [];
         let newsContext = "";
+        let quoteContext = "";
         let detectedTicker = "";
 
         if (match) {
-          const rawTerm = match[1].trim();
+          const rawTerm = match[1].trim().replace(/[?.!,]+$/g, "");
           detectedTicker = companyToTicker[rawTerm.toLowerCase()] ?? rawTerm.toUpperCase();
 
           // Fetch NewsAPI headlines for the detected ticker
@@ -2142,6 +2144,43 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
                 }
               }
             } catch { /* fall through */ }
+          }
+
+          if (newsArticles.length === 0 && ENV.finnhubApiKey) {
+            try {
+              const today = new Date();
+              const from = new Date(today);
+              from.setDate(today.getDate() - 14);
+              const fmt = (d: Date) => d.toISOString().split("T")[0];
+              const articles = await finnhubRequest("/company-news", { symbol: detectedTicker, from: fmt(from), to: fmt(today) }) as any[];
+              if (Array.isArray(articles)) {
+                newsArticles = articles
+                  .filter((a) => a?.headline && a?.url)
+                  .sort((a, b) => (b.datetime ?? 0) - (a.datetime ?? 0))
+                  .slice(0, 5)
+                  .map((a) => ({
+                    headline: a.headline ?? "",
+                    summary: a.summary ?? "",
+                    url: a.url ?? "",
+                    source: a.source ?? "Finnhub",
+                    datetime: a.datetime ?? 0,
+                  }));
+              }
+            } catch { /* fall through */ }
+          }
+
+          if (newsArticles.length > 0) {
+            newsContext = `\n\nLatest real-time news for ${detectedTicker}:\n` +
+              newsArticles.map((a, i) => `${i + 1}. ${a.headline} (${a.source}, ${new Date(a.datetime * 1000).toLocaleString()})${a.summary ? ` — ${a.summary}` : ""}`).join("\n");
+          }
+
+          if (ENV.finnhubApiKey) {
+            try {
+              const quote = await finnhubRequest("/quote", { symbol: detectedTicker }) as any;
+              if (quote?.c) {
+                quoteContext = `\n\nCurrent ${detectedTicker} quote: $${Number(quote.c).toFixed(2)}, ${Number(quote.d ?? 0) >= 0 ? "+" : ""}${Number(quote.d ?? 0).toFixed(2)} (${Number(quote.dp ?? 0) >= 0 ? "+" : ""}${Number(quote.dp ?? 0).toFixed(2)}%).`;
+              }
+            } catch { /* quote is optional */ }
           }
         }
 
@@ -2177,12 +2216,12 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
 
         // Build system prompt with news-specific instruction when news intent detected
         const newsInstruction = newsArticles.length > 0
-          ? `\n\nWhen answering news questions, summarize the top headlines in a conversational way. Mention the source and how recent the news is. Keep your spoken response under 120 words so it can be read aloud naturally. After summarizing, say "I've pulled up the articles below for you to read."`
+          ? `\n\nThe user is asking for the latest news, update, or catalyst. Answer immediately with the newest relevant catalyst first. Do not ask clarifying questions or offer a menu of options. Mention source and recency, then give a practical trader takeaway. Keep the spoken response under 140 words. After summarizing, say "I've pulled up the articles below for you to read."`
           : "";
 
         const response = await invokeLLM({
           messages: [
-            { role: "system", content: systemPrompt + newsInstruction + tradeContext + newsContext },
+            { role: "system", content: systemPrompt + newsInstruction + tradeContext + newsContext + quoteContext },
             { role: "user", content: input.message },
           ],
         });
