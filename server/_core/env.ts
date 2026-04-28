@@ -7,6 +7,7 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? (process.env.OPENAI_API_KEY ? "https://api.openai.com" : ""),
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? process.env.OPENAI_API_KEY ?? "",
+  llmModel: process.env.LLM_MODEL ?? (process.env.BUILT_IN_FORGE_API_URL ? "gemini-2.5-flash" : "gpt-4.1"),
   googleTtsApiKey: process.env.GOOGLE_TTS_API_KEY ?? "",
   elevenLabsApiKey: process.env.ELEVENLABS_API_KEY ?? "",
   finnhubApiKey: process.env.FINNHUB_API_KEY ?? "",
