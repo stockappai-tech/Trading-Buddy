@@ -224,7 +224,7 @@ export default function VoiceRecording() {
     try {
       // Save all extracted trades
       // If a trade is a close (has exitPrice) AND matches an existing open position,
-      // UPDATE the original open trade instead of creating a duplicate SELL/COVER row.
+      // close it fully or reduce its quantity for a partial exit.
       for (const trade of extractedTrades) {
         const status = trade.exitPrice ? "closed" : (trade.status ?? "open");
 
@@ -235,17 +235,56 @@ export default function VoiceRecording() {
           : null;
 
         if (matchingOpen && trade.exitPrice) {
-          // Update the original open trade with exit data
-          await updateTradeMutation.mutateAsync({
-            id: matchingOpen.id,
-            exitPrice: trade.exitPrice,
-            pnl: trade.pnl,
-            status: "closed",
-            takeProfit: trade.takeProfit ?? matchingOpen.takeProfit ?? undefined,
-            takeProfit2: trade.takeProfit2 ?? matchingOpen.takeProfit2 ?? undefined,
-            stopLoss: trade.stopLoss ?? matchingOpen.stopLoss ?? undefined,
-            notes: trade.notes ?? matchingOpen.notes ?? undefined,
-          });
+          const openQty = parseFloat(matchingOpen.quantity);
+          const closeQty = parseFloat(trade.quantity);
+          const entry = parseFloat(matchingOpen.entryPrice);
+          const exit = parseFloat(trade.exitPrice);
+          const isShortClose = matchingOpen.side === "short";
+          const calculatedPnl = !isNaN(closeQty) && !isNaN(entry) && !isNaN(exit)
+            ? (isShortClose ? (entry - exit) * closeQty : (exit - entry) * closeQty).toFixed(2)
+            : trade.pnl;
+
+          if (!isNaN(openQty) && !isNaN(closeQty) && closeQty > 0 && closeQty < openQty) {
+            const remainingQty = openQty - closeQty;
+
+            // Partial close: keep the original position open with the remaining quantity.
+            await updateTradeMutation.mutateAsync({
+              id: matchingOpen.id,
+              quantity: remainingQty % 1 === 0 ? String(Math.round(remainingQty)) : remainingQty.toFixed(4),
+              takeProfit: trade.takeProfit ?? matchingOpen.takeProfit ?? undefined,
+              takeProfit2: trade.takeProfit2 ?? matchingOpen.takeProfit2 ?? undefined,
+              stopLoss: trade.stopLoss ?? matchingOpen.stopLoss ?? undefined,
+              notes: matchingOpen.notes ?? undefined,
+            });
+
+            // Record the realized partial exit as its own closed trade.
+            await createTrade.mutateAsync({
+              symbol: matchingOpen.symbol,
+              side: matchingOpen.side,
+              quantity: trade.quantity,
+              entryPrice: matchingOpen.entryPrice,
+              exitPrice: trade.exitPrice,
+              pnl: calculatedPnl,
+              status: "closed",
+              takeProfit: trade.takeProfit ?? matchingOpen.takeProfit ?? undefined,
+              takeProfit2: trade.takeProfit2 ?? matchingOpen.takeProfit2 ?? undefined,
+              stopLoss: trade.stopLoss ?? matchingOpen.stopLoss ?? undefined,
+              notes: trade.notes ?? `Partial close via ${trade.side}`,
+              sessionId,
+            });
+          } else {
+            // Full close: update the original open trade with exit data.
+            await updateTradeMutation.mutateAsync({
+              id: matchingOpen.id,
+              exitPrice: trade.exitPrice,
+              pnl: calculatedPnl,
+              status: "closed",
+              takeProfit: trade.takeProfit ?? matchingOpen.takeProfit ?? undefined,
+              takeProfit2: trade.takeProfit2 ?? matchingOpen.takeProfit2 ?? undefined,
+              stopLoss: trade.stopLoss ?? matchingOpen.stopLoss ?? undefined,
+              notes: trade.notes ?? matchingOpen.notes ?? undefined,
+            });
+          }
         } else {
           // No matching open trade — create as new
           await createTrade.mutateAsync({ ...trade, status, sessionId });
