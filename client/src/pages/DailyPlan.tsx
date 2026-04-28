@@ -9,9 +9,9 @@ import { CalendarCheck, CheckCircle2, ClipboardCheck, RotateCcw, ShieldAlert, Ta
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-const PLAN_STORAGE_KEY = "trading_buddy_daily_plan";
+export const PLAN_STORAGE_KEY = "trading_buddy_daily_plan";
 
-type PlanState = {
+export type PlanState = {
   date: string;
   marketBias: string;
   focusTickers: string;
@@ -41,11 +41,11 @@ const EXECUTION_CHECKS = [
   "No revenge trade or FOMO entry",
 ];
 
-function todayKey() {
+export function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function createDefaultPlan(maxLoss = ""): PlanState {
+export function createDefaultPlan(maxLoss = ""): PlanState {
   return {
     date: todayKey(),
     marketBias: "",
@@ -61,7 +61,7 @@ function createDefaultPlan(maxLoss = ""): PlanState {
   };
 }
 
-function loadPlan(maxLoss = "") {
+export function loadPlan(maxLoss = "") {
   try {
     const raw = window.localStorage.getItem(PLAN_STORAGE_KEY);
     if (!raw) return createDefaultPlan(maxLoss);

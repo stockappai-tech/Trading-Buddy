@@ -8,6 +8,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
+import { loadPlan, type PlanState } from "./DailyPlan";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -279,6 +280,7 @@ export default function AICoach() {
     headline: string; summary: string; url: string; source: string; datetime: number;
   }>>([]);
   const [newsTickerLabel, setNewsTickerLabel] = useState("");
+  const [dailyPlan, setDailyPlan] = useState<PlanState | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const [, navigate] = useLocation();
@@ -372,10 +374,12 @@ export default function AICoach() {
     if (!text.trim()) return;
     stopSpeaking();
     setIsThinking(true);
+    const plan = loadPlan();
+    setDailyPlan(plan);
     if (isPremium) {
-      chatMutation.mutate({ message: text, coachMode: selectedMode });
+      chatMutation.mutate({ message: text, coachMode: selectedMode, dailyPlan: plan });
     } else {
-      freeChatMutation.mutate({ message: text });
+      freeChatMutation.mutate({ message: text, dailyPlan: plan });
     }
   }, [isPremium, selectedMode, chatMutation, freeChatMutation, stopSpeaking]);
 
@@ -664,6 +668,13 @@ export default function AICoach() {
               <button onClick={() => navigate("/upgrade")} className="underline text-yellow-500">Upgrade to Pro</button>
               {" "}for personalized coaching with your full trade history.
             </p>
+          )}
+
+          {dailyPlan?.aPlusSetup && (
+            <div className="w-full max-w-md rounded-lg border border-border bg-card/50 p-3 text-xs text-muted-foreground">
+              <p className="font-semibold text-foreground mb-1">Today&apos;s Plan Active</p>
+              <p className="line-clamp-2">{dailyPlan.aPlusSetup}</p>
+            </div>
           )}
 
           {/* News article cards — shown after a news voice command */}

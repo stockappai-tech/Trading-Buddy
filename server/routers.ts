@@ -77,6 +77,20 @@ const PERSONA_TO_FORGE: Record<TtsPersona, ForgeTtsVoice> = {
   laura: "shimmer",
 };
 
+const dailyPlanInput = z.object({
+  date: z.string(),
+  marketBias: z.string().optional(),
+  focusTickers: z.string().optional(),
+  keyLevels: z.string().optional(),
+  aPlusSetup: z.string().optional(),
+  noTradeRules: z.string().optional(),
+  maxLoss: z.string().optional(),
+  maxTrades: z.string().optional(),
+  preMarketChecks: z.array(z.string()).optional(),
+  executionChecks: z.array(z.string()).optional(),
+  postMarketRecap: z.string().optional(),
+}).optional();
+
 // ─── Finnhub Market Data Helpers ─────────────────────────────────────────────
 
 async function finnhubRequest(path: string, params?: Record<string, string>) {
@@ -667,6 +681,29 @@ function buildTraderProfileContext(prefs: UserPreference) {
   return `\n\nTrader profile:\n${fields.map(([label, value]) => `- ${label}: ${value}`).join("\n")}
 
 Use this profile to personalize coaching. Tie advice to their risk limits, goal, trading style, and recurring weakness. If they are near or beyond a risk rule, call that out clearly. Do not repeat the full profile back unless asked.`;
+}
+
+function buildDailyPlanContext(plan?: z.infer<typeof dailyPlanInput>) {
+  if (!plan) return "";
+  const fields = [
+    ["Date", plan.date],
+    ["Market bias", plan.marketBias],
+    ["Focus tickers", plan.focusTickers],
+    ["Key levels", plan.keyLevels],
+    ["A+ setup", plan.aPlusSetup],
+    ["No-trade rules", plan.noTradeRules],
+    ["Max daily loss", plan.maxLoss ? `$${plan.maxLoss}` : ""],
+    ["Max trades", plan.maxTrades],
+    ["Pre-market checklist", plan.preMarketChecks?.length ? `${plan.preMarketChecks.length} completed` : ""],
+    ["Entry checklist", plan.executionChecks?.length ? `${plan.executionChecks.length} completed` : ""],
+    ["Post-market recap", plan.postMarketRecap],
+  ].filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== "");
+
+  if (fields.length === 0) return "";
+
+  return `\n\nToday's trading plan:\n${fields.map(([label, value]) => `- ${label}: ${value}`).join("\n")}
+
+Use today's plan as the trader's source of truth. If their proposed trade violates the A+ setup, no-trade rules, max loss, max trades, or checklist discipline, warn them directly before giving any tactical advice. If the plan is incomplete, ask them to finish the missing plan item first.`;
 }
 
 // ─── Coach Personalities ──────────────────────────────────────────────────────
@@ -2045,6 +2082,7 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
         z.object({
           message: z.string().min(1),
           coachMode: z.enum(["sergeant", "friend", "expert"]).optional(),
+          dailyPlan: dailyPlanInput,
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -2054,7 +2092,7 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
         }
 
         const coachMode = input.coachMode ?? prefs.coachMode ?? "friend";
-        const systemPrompt = COACH_PROMPTS[coachMode] + buildTraderProfileContext(prefs);
+        const systemPrompt = COACH_PROMPTS[coachMode] + buildTraderProfileContext(prefs) + buildDailyPlanContext(input.dailyPlan);
 
         // ── News intent detection ──────────────────────────────────────────────
         // Detect patterns like: "news on AAPL", "what's happening with Tesla",
@@ -2156,7 +2194,7 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
       }),
 
     freeChat: protectedProcedure
-      .input(z.object({ message: z.string().min(1) }))
+      .input(z.object({ message: z.string().min(1), dailyPlan: dailyPlanInput }))
       .mutation(async ({ ctx, input }) => {
         const prefs = await getOrCreatePreferences(ctx.user.id);
         // Limited free tier — basic responses without news context
@@ -2164,7 +2202,7 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
           messages: [
             {
               role: "system",
-              content: "You are a basic trading assistant. Provide brief, helpful trading tips and general market knowledge. Keep responses under 100 words. If asked about specific real-time news or prices, explain that live data is available in the Pro plan. Occasionally mention that premium coaching offers deeper analysis." + buildTraderProfileContext(prefs),
+              content: "You are a basic trading assistant. Provide brief, helpful trading tips and general market knowledge. Keep responses under 100 words. If asked about specific real-time news or prices, explain that live data is available in the Pro plan. Occasionally mention that premium coaching offers deeper analysis." + buildTraderProfileContext(prefs) + buildDailyPlanContext(input.dailyPlan),
             },
             { role: "user", content: input.message },
           ],
