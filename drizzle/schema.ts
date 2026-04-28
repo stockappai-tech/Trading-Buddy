@@ -54,6 +54,7 @@ export const trades = mysqlTable("trades", {
   exitPrice: decimal("exitPrice", { precision: 15, scale: 4 }),
   pnl: decimal("pnl", { precision: 15, scale: 4 }),
   takeProfit: decimal("takeProfit", { precision: 15, scale: 4 }),
+  takeProfit2: decimal("takeProfit2", { precision: 15, scale: 4 }),
   stopLoss: decimal("stopLoss", { precision: 15, scale: 4 }),
   status: mysqlEnum("status", ["open", "closed"]).default("open").notNull(),
   notes: text("notes"),

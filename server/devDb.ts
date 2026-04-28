@@ -75,7 +75,7 @@ const _trades: Trade[] = [];
 
 export async function createTrade(trade: InsertTrade): Promise<number> {
   const id = nextId();
-  _trades.push({ id, sessionId: null, exitPrice: null, pnl: null, takeProfit: null, stopLoss: null, notes: null, disciplineScore: null, disciplineFeedback: null, closedAt: null, status: "open", tradeDate: now(), createdAt: now(), updatedAt: now(), ...trade } as Trade);
+  _trades.push({ id, sessionId: null, exitPrice: null, pnl: null, takeProfit: null, takeProfit2: null, stopLoss: null, notes: null, disciplineScore: null, disciplineFeedback: null, closedAt: null, status: "open", tradeDate: now(), createdAt: now(), updatedAt: now(), ...trade } as Trade);
   return id;
 }
 

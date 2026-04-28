@@ -18,6 +18,7 @@ type ExtractedTrade = {
   exitPrice?: string;
   pnl?: string;
   takeProfit?: string;
+  takeProfit2?: string;
   stopLoss?: string;
   status: "open" | "closed";
   notes?: string;
@@ -132,6 +133,7 @@ export default function VoiceRecording() {
       quantity: t.quantity as string,
       entryPrice: t.entryPrice as string,
       takeProfit: t.takeProfit as string | null | undefined,
+      takeProfit2: t.takeProfit2 as string | null | undefined,
       stopLoss: t.stopLoss as string | null | undefined,
       notes: t.notes as string | null | undefined,
     }));
@@ -240,6 +242,7 @@ export default function VoiceRecording() {
             pnl: trade.pnl,
             status: "closed",
             takeProfit: trade.takeProfit ?? matchingOpen.takeProfit ?? undefined,
+            takeProfit2: trade.takeProfit2 ?? matchingOpen.takeProfit2 ?? undefined,
             stopLoss: trade.stopLoss ?? matchingOpen.stopLoss ?? undefined,
             notes: trade.notes ?? matchingOpen.notes ?? undefined,
           });
@@ -360,8 +363,10 @@ export default function VoiceRecording() {
       // Apply magnitude sanity correction to exit, TP, SL relative to (corrected) entry
       const exitSane = exitNorm ? sanitizePrice(exitNorm, entry, livePrice) : "";
       const rawTp = normPrice(t.takeProfit);
+      const rawTp2 = normPrice(t.takeProfit2);
       const rawSl = normPrice(t.stopLoss);
       const tpSane = rawTp ? sanitizePrice(rawTp, entry, livePrice) : "";
+      const tp2Sane = rawTp2 ? sanitizePrice(rawTp2, entry, livePrice) : "";
       const slSane = rawSl ? sanitizePrice(rawSl, entry, livePrice) : "";
 
       // Recalculate PnL using corrected prices
@@ -374,8 +379,9 @@ export default function VoiceRecording() {
         return (mult * qty * (ex - entry)).toFixed(2);
       })();
 
-      // Default TP/SL if not provided (3% TP, 2% SL ≈ 1.5:1 ratio as starting point)
+      // Default TP/SL if not provided: TP1 at 2R and TP2 at 3R using a 2% stop.
       let tpNorm = tpSane || (isNaN(entry) ? "" : (isShort ? (entry * 0.97).toFixed(2) : (entry * 1.03).toFixed(2)));
+      let tp2Norm = tp2Sane || (isNaN(entry) ? "" : (isShort ? (entry * 0.94).toFixed(2) : (entry * 1.06).toFixed(2)));
       let slNorm = slSane || (isNaN(entry) ? "" : (isShort ? (entry * 1.02).toFixed(2) : (entry * 0.98).toFixed(2)));
 
       // ─── Enforce minimum 2:1 TP/SL ratio ─────────────────────────────────────
@@ -394,6 +400,13 @@ export default function VoiceRecording() {
               : (entry + 2 * slDist).toFixed(2);
             tpNorm = correctedTp;
           }
+          const tp2 = parseFloat(tp2Norm);
+          const tp2Dist = Math.abs(tp2 - entry);
+          if (!isNaN(tp2) && slDist > 0 && tp2Dist < 3 * slDist) {
+            tp2Norm = isShort
+              ? (entry - 3 * slDist).toFixed(2)
+              : (entry + 3 * slDist).toFixed(2);
+          }
         }
       }
 
@@ -404,6 +417,7 @@ export default function VoiceRecording() {
         exitPrice: exitSane || undefined,
         pnl: correctedPnl || undefined,
         takeProfit: tpNorm || undefined,
+        takeProfit2: tp2Norm || undefined,
         stopLoss: slNorm || undefined,
         notes: (!t.notes || t.notes === "null" || t.notes === "undefined") ? undefined : t.notes,
       };
@@ -615,10 +629,10 @@ export default function VoiceRecording() {
                       </div>
                     </div>
 
-                    {/* Row 2: Take Profit, Stop Loss, P&L */}
-                    <div className="grid grid-cols-3 gap-2">
+                    {/* Row 2: TP1, TP2, Stop Loss, P&L */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                       <div>
-                        <label className="text-xs text-[oklch(0.65_0.18_160)]">Take Profit</label>
+                        <label className="text-xs text-[oklch(0.65_0.18_160)]">TP1</label>
                         <Input
                           value={trade.takeProfit ?? ""}
                           onChange={(e) => updateTrade(i, "takeProfit", e.target.value)}
@@ -628,6 +642,20 @@ export default function VoiceRecording() {
                             if (isNaN(entry)) return "e.g. 158.00";
                             const isShort = trade.side === "short" || trade.side === "cover";
                             return isShort ? (entry * 0.97).toFixed(2) : (entry * 1.03).toFixed(2);
+                          })()}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-[oklch(0.72_0.16_190)]">TP2</label>
+                        <Input
+                          value={trade.takeProfit2 ?? ""}
+                          onChange={(e) => updateTrade(i, "takeProfit2", e.target.value)}
+                          className="h-7 text-xs bg-input border-[oklch(0.72_0.16_190)]/40 mt-0.5 focus-visible:ring-[oklch(0.72_0.16_190)]/50"
+                          placeholder={(() => {
+                            const entry = parseFloat(trade.entryPrice);
+                            if (isNaN(entry)) return "e.g. 162.00";
+                            const isShort = trade.side === "short" || trade.side === "cover";
+                            return isShort ? (entry * 0.94).toFixed(2) : (entry * 1.06).toFixed(2);
                           })()}
                         />
                       </div>

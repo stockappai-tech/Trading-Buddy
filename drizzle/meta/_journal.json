@@ -43,6 +43,13 @@
       "when": 1777319700000,
       "tag": "0005_trader_profile",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1777384200000,
+      "tag": "0006_trade_tp2",
+      "breakpoints": true
     }
   ]
 }

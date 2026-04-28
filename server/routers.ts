@@ -1464,6 +1464,7 @@ Please provide portfolio optimization recommendations including position sizing,
           exitPrice: z.string().optional(),
           pnl: z.string().optional(),
           takeProfit: z.string().optional(),
+          takeProfit2: z.string().optional(),
           stopLoss: z.string().optional(),
           status: z.enum(["open", "closed"]).default("open"),
           notes: z.string().optional(),
@@ -1496,6 +1497,7 @@ Please provide portfolio optimization recommendations including position sizing,
           exitPrice: z.string().optional(),
           pnl: z.string().optional(),
           takeProfit: z.string().optional(),
+          takeProfit2: z.string().optional(),
           stopLoss: z.string().optional(),
           status: z.enum(["open", "closed"]).optional(),
           notes: z.string().optional(),
@@ -1545,6 +1547,7 @@ Please provide portfolio optimization recommendations including position sizing,
         const pnl = parseFloat(trade.pnl ?? "0");
         const stopLoss = trade.stopLoss ? parseFloat(trade.stopLoss) : null;
         const takeProfit = trade.takeProfit ? parseFloat(trade.takeProfit) : null;
+        const takeProfit2 = trade.takeProfit2 ? parseFloat(trade.takeProfit2) : null;
         const accountSize = parseFloat(prefs.accountSize ?? "10000");
         const riskPct = parseFloat(prefs.riskPerTrade ?? "1");
 
@@ -1572,7 +1575,8 @@ Return JSON with: { score: number (1-10), feedback: string (2-3 sentences, direc
 - Exit: $${exitPrice.toFixed(2)}
 - P&L: $${pnl.toFixed(2)}
 - Stop Loss: ${stopLoss ? "$" + stopLoss.toFixed(2) : "not set"}
-- Take Profit: ${takeProfit ? "$" + takeProfit.toFixed(2) : "not set"}
+- TP1: ${takeProfit ? "$" + takeProfit.toFixed(2) : "not set"}
+- TP2: ${takeProfit2 ? "$" + takeProfit2.toFixed(2) : "not set"}
 - Notes: ${trade.notes ?? "none"}
 - Account size: $${accountSize.toFixed(0)}
 - Risk per trade: ${riskPct}%`,
@@ -1931,6 +1935,7 @@ Return JSON with: { score: number (1-10), feedback: string (2-3 sentences, direc
           quantity: z.string(),
           entryPrice: z.string(),
           takeProfit: z.string().nullable().optional(),
+          takeProfit2: z.string().nullable().optional(),
           stopLoss: z.string().nullable().optional(),
           notes: z.string().nullable().optional(),
         })).optional(),
@@ -1943,7 +1948,7 @@ Return JSON with: { score: number (1-10), feedback: string (2-3 sentences, direc
         const correctedTranscript = correctTickers(input.transcript);
         const openCtx = input.openPositions && input.openPositions.length > 0
           ? `\n\nCURRENT OPEN POSITIONS (use these to fill in missing data when the trader mentions closing/covering a position):\n${input.openPositions.map(p =>
-              `- ${p.symbol}: side=${p.side}, qty=${p.quantity}, entryPrice=${p.entryPrice}${p.takeProfit ? `, takeProfit=${p.takeProfit}` : ""}${p.stopLoss ? `, stopLoss=${p.stopLoss}` : ""}`
+              `- ${p.symbol}: side=${p.side}, qty=${p.quantity}, entryPrice=${p.entryPrice}${p.takeProfit ? `, takeProfit=${p.takeProfit}` : ""}${p.takeProfit2 ? `, takeProfit2=${p.takeProfit2}` : ""}${p.stopLoss ? `, stopLoss=${p.stopLoss}` : ""}`
             ).join("\n")}`
           : "";
         const response = await invokeLLM({
@@ -1958,11 +1963,13 @@ Return a JSON array of trades. Each trade should have:
 - entryPrice (number as string) — if closing a trade, use the original entry price from open positions context
 - exitPrice (number as string, optional) — the price at which the position was closed
 - pnl (number as string, optional) — calculate as (exitPrice - entryPrice) * quantity for longs, or (entryPrice - exitPrice) * quantity for shorts
-- takeProfit (number as string, optional) — from open positions context or if mentioned
+- takeProfit (number as string, optional) — first take-profit target, TP1, from open positions context or if mentioned
+- takeProfit2 (number as string, optional) — second take-profit target, TP2, from open positions context or if mentioned
 - stopLoss (number as string, optional) — from open positions context or if mentioned
 - status ("open" if still holding, "closed" if exited)
 - notes (any relevant context)
-IMPORTANT: When the trader says they are "closing", "selling", "exiting", or "covering" a position, match it to the open positions context to fill in entryPrice, quantity, takeProfit, and stopLoss automatically.
+IMPORTANT: When the trader says they are "closing", "selling", "exiting", or "covering" a position, match it to the open positions context to fill in entryPrice, quantity, takeProfit, takeProfit2, and stopLoss automatically.
+IMPORTANT: If the trader says "TP1", "first target", or "first take profit", put that in takeProfit. If they say "TP2", "second target", or "runner target", put that in takeProfit2.
 IMPORTANT: Speech-to-text often misplaces decimal points. If the entry price is around $150 and the exit price sounds like $1.72 or $1720, the correct value is almost certainly $172. Always sanity-check prices — exit, TP, and SL should be in the same order of magnitude as the entry price (within 50%). If a price seems off by a factor of 10, 100, or 0.1, correct it before returning.
 If no clear trades are mentioned, return an empty array [].
 Only return valid JSON, no markdown or explanation.${openCtx}`,
@@ -1989,6 +1996,7 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
                         exitPrice: { type: ["string", "null"] },
                         pnl: { type: ["string", "null"] },
                         takeProfit: { type: ["string", "null"] },
+                        takeProfit2: { type: ["string", "null"] },
                         stopLoss: { type: ["string", "null"] },
                         status: { type: "string" },
                         notes: { type: ["string", "null"] },
@@ -2001,6 +2009,7 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
                         "exitPrice",
                         "pnl",
                         "takeProfit",
+                        "takeProfit2",
                         "stopLoss",
                         "status",
                         "notes",
