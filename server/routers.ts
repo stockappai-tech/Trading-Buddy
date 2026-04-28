@@ -2028,34 +2028,69 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
         const parsed = JSON.parse(typeof content === "string" ? content : JSON.stringify(content));
         const trades = parsed.trades ?? [];
 
-        // Auto-fill exit price at market for trades where:
-        // 1. The user said "close" / "sell" / "cover" but no exit price was extracted
-        // 2. We have a live market price from Finnhub for that symbol
-        // 3. The trade matches an open position (so we know the exact quantity)
+        const closeIntent = /\b(close|closing|closed|sell|selling|sold|exit|exiting|cover|covering)\b/i.test(correctedTranscript);
+        const restIntent = /\b(rest|remaining|remainder|all|everything|full|entire)\b/i.test(correctedTranscript);
+        const openPositions = input.openPositions ?? [];
+        const findMatchingOpen = (trade: any) => {
+          const symbol = typeof trade.symbol === "string" ? trade.symbol.toUpperCase() : "";
+          const expectedSide = trade.side === "sell" ? "buy" : trade.side === "cover" ? "short" : null;
+          return openPositions.find((p) =>
+            (!symbol || p.symbol.toUpperCase() === symbol) &&
+            (!expectedSide || p.side === expectedSide)
+          );
+        };
+        const applyMarketClose = (trade: any, matchingOpen: NonNullable<typeof input.openPositions>[number], livePrice: number) => {
+          const qty = parseFloat(restIntent || !trade.quantity || trade.quantity === "null" ? matchingOpen.quantity : trade.quantity);
+          const entry = parseFloat(matchingOpen.entryPrice);
+          const exit = livePrice;
+
+          trade.symbol = matchingOpen.symbol;
+          trade.side = matchingOpen.side === "short" ? "cover" : "sell";
+          trade.quantity = (!isNaN(qty) && qty > 0 ? qty : parseFloat(matchingOpen.quantity)).toString();
+          trade.entryPrice = matchingOpen.entryPrice;
+          trade.exitPrice = livePrice.toFixed(2);
+          trade.status = "closed";
+          trade.takeProfit = trade.takeProfit ?? matchingOpen.takeProfit ?? null;
+          trade.takeProfit2 = trade.takeProfit2 ?? matchingOpen.takeProfit2 ?? null;
+          trade.stopLoss = trade.stopLoss ?? matchingOpen.stopLoss ?? null;
+          trade.notes = trade.notes ?? (restIntent ? "Closed remaining position at market" : "Closed at market");
+
+          if (!isNaN(entry) && !isNaN(qty)) {
+            const isShort = matchingOpen.side === "short";
+            trade.pnl = (isShort ? (entry - exit) * qty : (exit - entry) * qty).toFixed(2);
+          }
+        };
+
         if (input.liveQuotes && Object.keys(input.liveQuotes).length > 0) {
           for (const trade of trades) {
             const isClose = trade.side === "sell" || trade.side === "cover";
             const hasNoExit = !trade.exitPrice || trade.exitPrice === "" || trade.exitPrice === "null";
-            const livePrice = input.liveQuotes[trade.symbol.toUpperCase()];
-            if (isClose && hasNoExit && livePrice && livePrice > 0) {
-              trade.exitPrice = livePrice.toFixed(2);
-              trade.status = "closed";
-              // Recalculate PnL using live price
-              const matchingOpen = input.openPositions?.find(
-                (p) => p.symbol === trade.symbol && (p.side === "buy" || p.side === "short")
-              );
-              if (matchingOpen) {
-                const qty = parseFloat(matchingOpen.quantity);
-                const entry = parseFloat(matchingOpen.entryPrice);
-                const exit = livePrice;
-                if (!isNaN(qty) && !isNaN(entry)) {
-                  const isShort = matchingOpen.side === "short";
-                  trade.pnl = (isShort ? (entry - exit) * qty : (exit - entry) * qty).toFixed(2);
-                  // Always use open position quantity and entry price (authoritative source)
-                  trade.quantity = matchingOpen.quantity;
-                  trade.entryPrice = matchingOpen.entryPrice;
-                }
-              }
+            const matchingOpen = isClose ? findMatchingOpen(trade) : undefined;
+            const livePrice = matchingOpen ? input.liveQuotes[matchingOpen.symbol.toUpperCase()] : undefined;
+            if (isClose && hasNoExit && matchingOpen && livePrice && livePrice > 0) {
+              applyMarketClose(trade, matchingOpen, livePrice);
+            }
+          }
+
+          if (closeIntent && restIntent && trades.length === 0 && openPositions.length === 1) {
+            const matchingOpen = openPositions[0];
+            const livePrice = input.liveQuotes[matchingOpen.symbol.toUpperCase()];
+            if (livePrice && livePrice > 0) {
+              const trade: any = {
+                symbol: matchingOpen.symbol,
+                side: matchingOpen.side === "short" ? "cover" : "sell",
+                quantity: matchingOpen.quantity,
+                entryPrice: matchingOpen.entryPrice,
+                exitPrice: null,
+                pnl: null,
+                takeProfit: matchingOpen.takeProfit ?? null,
+                takeProfit2: matchingOpen.takeProfit2 ?? null,
+                stopLoss: matchingOpen.stopLoss ?? null,
+                status: "closed",
+                notes: "Closed remaining position at market",
+              };
+              applyMarketClose(trade, matchingOpen, livePrice);
+              trades.push(trade);
             }
           }
         }

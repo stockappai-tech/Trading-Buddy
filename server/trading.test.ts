@@ -159,6 +159,43 @@ describe("trades router", () => {
   });
 });
 
+describe("sessions.extractTrades", () => {
+  it("closes the remaining open position at the live market price when no exit price is spoken", async () => {
+    const { invokeLLM } = await import("./_core/llm");
+    (invokeLLM as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      choices: [{ message: { content: JSON.stringify({ trades: [] }) } }],
+    });
+
+    const ctx = createMockContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.sessions.extractTrades({
+      transcript: "close the rest of my position",
+      openPositions: [{
+        symbol: "AAPL",
+        side: "buy",
+        quantity: "10",
+        entryPrice: "250.00",
+        takeProfit: "279.00",
+        takeProfit2: null,
+        stopLoss: "240.00",
+        notes: null,
+      }],
+      liveQuotes: { AAPL: 281.25 },
+    });
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toMatchObject({
+      symbol: "AAPL",
+      side: "sell",
+      quantity: "10",
+      entryPrice: "250.00",
+      exitPrice: "281.25",
+      status: "closed",
+    });
+    expect(result.trades[0].pnl).toBe("312.50");
+  });
+});
+
 describe("preferences router", () => {
   it("gets user preferences", async () => {
     const ctx = createMockContext();
