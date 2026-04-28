@@ -103,6 +103,37 @@ async function finnhubRequest(path: string, params?: Record<string, string>) {
   return res.json() as Promise<unknown>;
 }
 
+async function yahooQuote(symbol: string) {
+  const url = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`);
+  url.searchParams.set("range", "1d");
+  url.searchParams.set("interval", "1m");
+  const res = await fetch(url.toString(), { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`Yahoo quote API error: ${res.status}`);
+  const payload = await res.json() as any;
+  const result = payload?.chart?.result?.[0];
+  const meta = result?.meta;
+  const quote = result?.indicators?.quote?.[0];
+  const closes = (result?.indicators?.quote?.[0]?.close ?? []).filter((value: unknown) => typeof value === "number");
+  const last = Number(meta?.regularMarketPrice ?? closes.at(-1) ?? 0);
+  const prevClose = Number(meta?.previousClose ?? meta?.chartPreviousClose ?? 0);
+  const open = Number(meta?.regularMarketOpen ?? quote?.open?.find((value: unknown) => typeof value === "number") ?? last);
+  const high = Number(meta?.regularMarketDayHigh ?? Math.max(...closes, last));
+  const low = Number(meta?.regularMarketDayLow ?? Math.min(...closes, last));
+  const change = prevClose > 0 ? last - prevClose : 0;
+  const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0;
+
+  return {
+    symbol: symbol.toUpperCase(),
+    last,
+    open,
+    high,
+    low,
+    prevClose,
+    change,
+    changePercent,
+  };
+}
+
 async function coingeckoRequest(path: string, params?: Record<string, string>) {
   const base = "https://api.coingecko.com/api/v3";
   const url = new URL(`${base}${path}`);
@@ -2313,15 +2344,22 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
     quotes: protectedProcedure
       .input(z.object({ symbols: z.string() }))
       .query(async ({ ctx: _ctx, input }) => {
-        if (!ENV.finnhubApiKey) {
-          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Market data not configured." });
-        }
         const symbolList = input.symbols.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 20);
-        // Finnhub /quote only supports one symbol at a time — fan out in parallel
+        if (symbolList.length === 0) return [];
+
         const results = await Promise.allSettled(
           symbolList.map(async (sym) => {
-            const data = await finnhubRequest("/quote", { symbol: sym }) as any;
-            return { symbol: sym, last: data.c, open: data.o, high: data.h, low: data.l, prevClose: data.pc, change: data.d, changePercent: data.dp };
+            if (ENV.finnhubApiKey) {
+              try {
+                const data = await finnhubRequest("/quote", { symbol: sym }) as any;
+                if (data?.c > 0) {
+                  return { symbol: sym, last: data.c, open: data.o, high: data.h, low: data.l, prevClose: data.pc, change: data.d, changePercent: data.dp, source: "Finnhub" };
+                }
+              } catch {
+                // Fall through to the no-key backup provider.
+              }
+            }
+            return { ...await yahooQuote(sym), source: "Yahoo" };
           })
         );
         return results
