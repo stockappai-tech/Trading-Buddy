@@ -36,6 +36,12 @@ export default function TradeHistory() {
 
   const utils = trpc.useUtils();
   const { data: trades, isLoading } = trpc.trades.list.useQuery({ limit: 500 });
+  const quoteSymbol = form.symbol.trim().toUpperCase();
+  const { data: liveQuoteData, refetch: refetchLiveQuote } = trpc.market.quotes.useQuery(
+    { symbols: quoteSymbol },
+    { enabled: showAddDialog && quoteSymbol.length > 0, refetchInterval: 10000 }
+  );
+  const liveQuote = liveQuoteData?.[0];
 
   const createTrade = trpc.trades.create.useMutation({
     onSuccess: () => {
@@ -346,6 +352,43 @@ export default function TradeHistory() {
                 </Select>
               </div>
             </div>
+            {quoteSymbol && (
+              <div className="rounded-lg border border-border bg-secondary/40 p-3">
+                {liveQuote ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Live {liveQuote.symbol} price</p>
+                      <p className="text-lg font-bold text-foreground">${liveQuote.last.toFixed(2)}</p>
+                      <p className={liveQuote.change >= 0 ? "text-xs text-[oklch(0.65_0.18_160)]" : "text-xs text-destructive"}>
+                        {liveQuote.change >= 0 ? "+" : ""}{liveQuote.change.toFixed(2)} ({liveQuote.changePercent >= 0 ? "+" : ""}{liveQuote.changePercent.toFixed(2)}%)
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs border-border"
+                        onClick={() => setForm({ ...form, entryPrice: liveQuote.last.toFixed(2) })}
+                      >
+                        Use Entry
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-xs"
+                        onClick={() => refetchLiveQuote()}
+                      >
+                        Refresh
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Loading live quote for {quoteSymbol}...</p>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Quantity *</label>
@@ -359,7 +402,20 @@ export default function TradeHistory() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Exit Price</label>
-                <Input type="number" value={form.exitPrice} onChange={(e) => setForm({ ...form, exitPrice: e.target.value })} placeholder="155.00" className="bg-input border-border h-8 text-sm" />
+                <div className="flex gap-1">
+                  <Input type="number" value={form.exitPrice} onChange={(e) => setForm({ ...form, exitPrice: e.target.value })} placeholder="155.00" className="bg-input border-border h-8 text-sm" />
+                  {liveQuote && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-2 text-xs border-border"
+                      onClick={() => setForm({ ...form, exitPrice: liveQuote.last.toFixed(2) })}
+                    >
+                      Live
+                    </Button>
+                  )}
+                </div>
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">P&L (auto-calc)</label>

@@ -69,9 +69,14 @@ export default function MarketData() {
     { enabled: Boolean(symbol) && assetType === "stock" }
   );
 
+  const stockQuotes = trpc.market.quotes.useQuery(
+    { symbols: symbol.toUpperCase() },
+    { enabled: Boolean(symbol) && assetType === "stock", refetchInterval: 10000 }
+  );
+
   const cryptoQuotes = trpc.market.cryptoQuotes.useQuery(
     { symbols: assetType === "crypto" ? [symbol] : [] },
-    { enabled: Boolean(symbol) && assetType === "crypto" }
+    { enabled: Boolean(symbol) && assetType === "crypto", refetchInterval: 10000 }
   );
 
   useEffect(() => {
@@ -96,7 +101,8 @@ export default function MarketData() {
     }));
   }, [selectedHistorical]);
 
-  const latestQuote = cryptoQuotes.data?.[0];
+  const latestCryptoQuote = cryptoQuotes.data?.[0];
+  const latestStockQuote = stockQuotes.data?.[0];
   const isLoading = historical1D.isLoading || historical1W.isLoading || historical1M.isLoading;
 
   return (
@@ -113,7 +119,7 @@ export default function MarketData() {
             </p>
           </div>
           <Badge variant="secondary" className="flex items-center gap-2">
-            <RefreshCw className="h-4 w-4" /> Live Market
+            <RefreshCw className="h-4 w-4" /> Updates every 10s
           </Badge>
         </div>
 
@@ -214,30 +220,52 @@ export default function MarketData() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {assetType === "crypto" ? (
-                  latestQuote ? (
+                  latestCryptoQuote ? (
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-4">
                         <p className="text-sm font-medium">Current Price</p>
-                        <p className="text-xl font-bold">${latestQuote.price.toFixed(2)}</p>
+                        <p className="text-xl font-bold">${latestCryptoQuote.price.toFixed(2)}</p>
                       </div>
                       <div className="flex items-center justify-between gap-4">
                         <p className="text-sm text-muted-foreground">24h Change</p>
-                        <p className={latestQuote.change24h >= 0 ? "text-emerald-500" : "text-red-500"}>{formatChange(latestQuote.change24h)}</p>
+                        <p className={latestCryptoQuote.change24h >= 0 ? "text-emerald-500" : "text-red-500"}>{formatChange(latestCryptoQuote.change24h)}</p>
                       </div>
                       <div className="flex items-center justify-between gap-4">
                         <p className="text-sm text-muted-foreground">Market Cap</p>
-                        <p>${(latestQuote.marketCap ?? 0).toLocaleString()}</p>
+                        <p>${(latestCryptoQuote.marketCap ?? 0).toLocaleString()}</p>
                       </div>
                       <div className="flex items-center justify-between gap-4">
                         <p className="text-sm text-muted-foreground">24h Volume</p>
-                        <p>${(latestQuote.volume24h ?? 0).toLocaleString()}</p>
+                        <p>${(latestCryptoQuote.volume24h ?? 0).toLocaleString()}</p>
                       </div>
                     </div>
                   ) : (
                     <div className="text-sm text-muted-foreground">Loading crypto quote...</div>
                   )
+                ) : latestStockQuote ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <p className="text-sm font-medium">Current Price</p>
+                      <p className="text-xl font-bold">${latestStockQuote.last.toFixed(2)}</p>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <p className="text-sm text-muted-foreground">Today</p>
+                      <p className={latestStockQuote.change >= 0 ? "text-emerald-500" : "text-red-500"}>
+                        {latestStockQuote.change >= 0 ? "+" : ""}{latestStockQuote.change.toFixed(2)} ({formatChange(latestStockQuote.changePercent)})
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <p className="text-sm text-muted-foreground">Open</p>
+                      <p>${latestStockQuote.open.toFixed(2)}</p>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <p className="text-sm text-muted-foreground">High / Low</p>
+                      <p>${latestStockQuote.high.toFixed(2)} / ${latestStockQuote.low.toFixed(2)}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Live quote refreshes automatically every 10 seconds.</p>
+                  </div>
                 ) : (
-                  <div className="text-sm text-muted-foreground">Switch to crypto mode to see live pricing summary.</div>
+                  <div className="text-sm text-muted-foreground">Loading stock quote...</div>
                 )}
               </CardContent>
             </Card>
@@ -377,12 +405,12 @@ export default function MarketData() {
                   </div>
                   <div className="rounded-lg border border-border p-4">
                     <p className="text-sm text-muted-foreground">Last Price</p>
-                    <p className="mt-2 text-xl font-semibold">${latestQuote?.price?.toFixed(2) ?? "--"}</p>
+                    <p className="mt-2 text-xl font-semibold">${latestCryptoQuote?.price?.toFixed(2) ?? "--"}</p>
                   </div>
                   <div className="rounded-lg border border-border p-4">
                     <p className="text-sm text-muted-foreground">24h Change</p>
-                    <p className={`mt-2 text-xl font-semibold ${latestQuote?.change24h >= 0 ? "text-emerald-500" : "text-red-500"}`}>
-                      {latestQuote ? formatChange(latestQuote.change24h) : "--"}
+                    <p className={`mt-2 text-xl font-semibold ${(latestCryptoQuote?.change24h ?? 0) >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                      {latestCryptoQuote ? formatChange(latestCryptoQuote.change24h) : "--"}
                     </p>
                   </div>
                 </div>
@@ -398,15 +426,15 @@ export default function MarketData() {
                     <tbody>
                       <tr className="border-t border-border">
                         <td className="px-3 py-2">Market Cap</td>
-                        <td className="px-3 py-2">${latestQuote?.marketCap?.toLocaleString() ?? "--"}</td>
+                        <td className="px-3 py-2">${latestCryptoQuote?.marketCap?.toLocaleString() ?? "--"}</td>
                       </tr>
                       <tr className="border-t border-border">
                         <td className="px-3 py-2">24h Volume</td>
-                        <td className="px-3 py-2">${latestQuote?.volume24h?.toLocaleString() ?? "--"}</td>
+                        <td className="px-3 py-2">${latestCryptoQuote?.volume24h?.toLocaleString() ?? "--"}</td>
                       </tr>
                       <tr className="border-t border-border">
                         <td className="px-3 py-2">Updated</td>
-                        <td className="px-3 py-2">{latestQuote?.updatedAt ? new Date(latestQuote.updatedAt).toLocaleTimeString() : "--"}</td>
+                        <td className="px-3 py-2">{latestCryptoQuote?.updatedAt ? new Date(latestCryptoQuote.updatedAt).toLocaleTimeString() : "--"}</td>
                       </tr>
                     </tbody>
                   </table>
