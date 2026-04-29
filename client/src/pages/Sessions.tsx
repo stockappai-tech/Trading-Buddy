@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { REALTIME_INTERVALS } from "@/lib/realtime";
-import { Bot, BookmarkPlus, Download, ExternalLink, FileText, Heart, Mic, Newspaper, Star, Trash2, X } from "lucide-react";
+import { Bot, BookmarkPlus, Download, ExternalLink, FileText, Heart, Mic, Newspaper, RefreshCw, Star, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { format, subDays, startOfDay } from "date-fns";
@@ -88,10 +88,11 @@ export default function Sessions() {
     return watchlistItems.map((w) => w.symbol).slice(0, 8);
   }, [watchlistItems]);
 
-  const { data: news, isLoading: newsLoading } = trpc.market.news.useQuery(
+  const { data: news, isLoading: newsLoading, isFetching: newsFetching, dataUpdatedAt: newsUpdatedAt, refetch: refetchNews } = trpc.market.news.useQuery(
     { symbols: watchlistSymbols },
     { enabled: watchlistSymbols.length > 0, refetchInterval: REALTIME_INTERVALS.news }
   );
+  const newsLastChecked = newsUpdatedAt ? format(new Date(newsUpdatedAt), "h:mm a") : "";
 
   // Live quotes for watchlist symbols
   const { data: watchlistQuotes } = trpc.market.quotes.useQuery(
@@ -284,12 +285,31 @@ export default function Sessions() {
 
             {/* Market News from Watchlist */}
             <div className="space-y-4">
-              <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <Newspaper className="h-4 w-4 text-primary" /> Market News
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                    <Newspaper className="h-4 w-4 text-primary" /> Market News
+                    {watchlistSymbols.length > 0 && (
+                      <span className="text-xs text-muted-foreground font-normal">for {watchlistSymbols.join(", ")}</span>
+                    )}
+                  </h2>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Auto-updates every {Math.round(REALTIME_INTERVALS.news / 60000)} min{newsLastChecked ? ` · Last checked ${newsLastChecked}` : ""}
+                  </p>
+                </div>
                 {watchlistSymbols.length > 0 && (
-                  <span className="text-xs text-muted-foreground font-normal">for {watchlistSymbols.join(", ")}</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => refetchNews()}
+                    disabled={newsFetching}
+                    className="h-8 shrink-0 border-border text-xs"
+                  >
+                    <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${newsFetching ? "animate-spin" : ""}`} />
+                    Refresh
+                  </Button>
                 )}
-              </h2>
+              </div>
               {watchlistSymbols.length === 0 ? (
                 <Card className="bg-card border-border">
                   <CardContent className="p-6 text-center">
@@ -317,12 +337,14 @@ export default function Sessions() {
                   const image = item.image ?? item.urlToImage ?? "";
                   // Relative time display
                   let timeLabel = "";
+                  let exactTimeLabel = "";
                   if (item.datetime) {
                     const ms = item.datetime * 1000;
                     const diffMin = Math.floor((Date.now() - ms) / 60000);
                     if (diffMin < 60) timeLabel = `${diffMin}m ago`;
                     else if (diffMin < 1440) timeLabel = `${Math.floor(diffMin / 60)}h ago`;
                     else timeLabel = new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                    exactTimeLabel = format(new Date(ms), "MMM d, h:mm a");
                   }
                   // Live price for article's symbol
                   const articleSym = typeof item.symbol === "string" ? item.symbol.toUpperCase() : "";
@@ -345,7 +367,11 @@ export default function Sessions() {
                               {source && (
                                 <span className="text-xs bg-secondary/60 text-muted-foreground px-1.5 py-0.5 rounded font-medium">{source}</span>
                               )}
-                              {timeLabel && <span className="text-xs text-muted-foreground">{timeLabel}</span>}
+                              {timeLabel && (
+                                <span className="text-xs text-muted-foreground">
+                                  {timeLabel}{exactTimeLabel ? ` · ${exactTimeLabel}` : ""}
+                                </span>
+                              )}
                               {q && (
                                 <span className={`text-xs font-mono font-semibold ${q.changePercent >= 0 ? "text-green-500" : "text-red-500"}`}>
                                   {articleSym} ${q.last.toFixed(2)} ({q.changePercent >= 0 ? "+" : ""}{q.changePercent.toFixed(2)}%)
