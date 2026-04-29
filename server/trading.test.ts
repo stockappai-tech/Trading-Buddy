@@ -196,6 +196,44 @@ describe("sessions.extractTrades", () => {
   });
 });
 
+describe("aiAssistant.getTradeSignals", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("does not leak personal-history or wrong-ticker reasoning into market signals", async () => {
+    const { invokeLLM } = await import("./_core/llm");
+    (invokeLLM as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            signal: "HOLD",
+            confidence: 50,
+            reasoning: "With no historical trades for RGTI, confidence is limited.",
+            entryPrice: "current",
+            stopLoss: "5%",
+            takeProfit: "10%",
+            timeframe: "1-3 days",
+          }),
+        },
+      }],
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ c: 100, pc: 98, d: 2, dp: 2.04, h: 101, l: 97, o: 98 }),
+    }));
+
+    const ctx = createMockContext({ user: { ...createMockContext().user!, role: "admin" } });
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.aiAssistant.getTradeSignals({ symbols: ["AAPL"] });
+
+    expect(result[0].symbol).toBe("AAPL");
+    expect(result[0].reasoning).toContain("AAPL");
+    expect(result[0].reasoning).not.toContain("RGTI");
+    expect(result[0].reasoning).not.toMatch(/historical trades|closed trades/i);
+  });
+});
+
 describe("preferences router", () => {
   it("gets user preferences", async () => {
     const ctx = createMockContext();

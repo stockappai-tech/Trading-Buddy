@@ -192,6 +192,22 @@ function parseDecimal(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function buildMarketSignalReasoning(symbol: string, currentPrice: number, changePercent: number, sentimentScore: number) {
+  const sentiment =
+    sentimentScore > 0.1 ? "positive" :
+    sentimentScore < -0.1 ? "negative" :
+    "neutral";
+  return `${symbol} signal is based on current price ${currentPrice > 0 ? `$${currentPrice.toFixed(2)}` : "data"}, today's ${changePercent >= 0 ? "positive" : "negative"} move of ${Math.abs(changePercent).toFixed(2)}%, and ${sentiment} recent-news sentiment. Multi-ticker signals do not use your personal trade history, so treat this as market setup guidance rather than a personalized historical edge.`;
+}
+
+function sanitizeMarketSignalReasoning(symbol: string, reasoning: unknown, currentPrice: number, changePercent: number, sentimentScore: number) {
+  const text = typeof reasoning === "string" ? reasoning.trim() : "";
+  if (!text || /\b(historical trades?|personal history|closed trades?)\b/i.test(text)) {
+    return buildMarketSignalReasoning(symbol, currentPrice, changePercent, sentimentScore);
+  }
+  return text;
+}
+
 const TRADIER_API_BASE = "https://api.tradier.com/v1";
 
 async function tradierRequest(token: string, path: string, method: string = "GET", body?: URLSearchParams | Record<string, string>) {
@@ -280,6 +296,8 @@ async function generateTradeSignal(symbol: string) {
       {
         role: "system",
         content: `You are an expert technical analyst. Based on current market data and sentiment, generate a trading signal.
+Analyze ONLY the ticker provided by the user. Do not reference any other ticker.
+Do not mention personal trade history, closed trades, or historical trades; this endpoint only provides market quote and sentiment data.
 
 Return JSON with:
 - signal: "BUY", "SELL", or "HOLD"
@@ -334,7 +352,7 @@ ${sentimentScore > 0.1 ? "Positive news sentiment detected." : sentimentScore < 
     symbol,
     signal: result.signal || "HOLD",
     confidence: Math.min(100, Math.max(0, result.confidence || 50)),
-    reasoning: result.reasoning || "Analysis unavailable",
+    reasoning: sanitizeMarketSignalReasoning(symbol, result.reasoning, currentPrice, changePercent, sentimentScore),
     entryPrice: result.entryPrice || "current",
     stopLoss: result.stopLoss || "5%",
     takeProfit: result.takeProfit || "10%",
@@ -1113,6 +1131,8 @@ ${symbolTrades.slice(-10).map(t =>
                 {
                   role: "system",
                   content: `You are an expert technical analyst. Based on current market data and sentiment, generate a trading signal.
+Analyze ONLY the ticker provided by the user. Do not reference any other ticker.
+Do not mention personal trade history, closed trades, or historical trades; this endpoint only provides market quote and sentiment data.
                   
 Return JSON with:
 - signal: "BUY", "SELL", or "HOLD"
@@ -1168,7 +1188,7 @@ ${sentimentScore > 0.1 ? "Positive news sentiment detected." : sentimentScore < 
               symbol,
               signal: result.signal || "HOLD",
               confidence: Math.min(100, Math.max(0, result.confidence || 50)),
-              reasoning: result.reasoning || "Analysis unavailable",
+              reasoning: sanitizeMarketSignalReasoning(symbol, result.reasoning, currentPrice, changePercent, sentimentScore),
               entryPrice: result.entryPrice || "current",
               stopLoss: result.stopLoss || "5%",
               takeProfit: result.takeProfit || "10%",
