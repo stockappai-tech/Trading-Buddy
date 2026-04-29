@@ -327,21 +327,8 @@ export default function Sessions() {
                   // Live price for article's symbol
                   const articleSym = typeof item.symbol === "string" ? item.symbol.toUpperCase() : "";
                   const q = articleSym ? quoteMap[articleSym] : null;
-                  const openArticle = () => {
-                    if (url) window.open(url, "_blank", "noopener,noreferrer");
-                  };
-                  return (
+                  const card = (
                     <Card
-                      key={i}
-                      role={url ? "link" : undefined}
-                      tabIndex={url ? 0 : undefined}
-                      onClick={openArticle}
-                      onKeyDown={(event) => {
-                        if (url && (event.key === "Enter" || event.key === " ")) {
-                          event.preventDefault();
-                          openArticle();
-                        }
-                      }}
                       className={`bg-card border-border transition-colors ${url ? "cursor-pointer hover:border-primary/50 hover:bg-muted/20" : "hover:border-primary/30"}`}
                     >
                       <CardContent className="p-3">
@@ -365,15 +352,22 @@ export default function Sessions() {
                                 </span>
                               )}
                               {url && (
-                                <a href={url} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()} className="text-xs text-primary flex items-center gap-0.5 hover:underline ml-auto">
+                                <span className="text-xs text-primary flex items-center gap-0.5 ml-auto">
                                   Read <ExternalLink className="h-2.5 w-2.5" />
-                                </a>
+                                </span>
                               )}
                             </div>
                           </div>
                         </div>
                       </CardContent>
                     </Card>
+                  );
+                  return url ? (
+                    <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                      {card}
+                    </a>
+                  ) : (
+                    <div key={i}>{card}</div>
                   );
                 })
               )}
