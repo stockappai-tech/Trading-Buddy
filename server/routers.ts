@@ -830,16 +830,7 @@ export const appRouter = router({
         // Get historical trades for this symbol to build prediction model
         const userTrades = await getTradesByUser(ctx.user.id, 1000);
         const symbolTrades = userTrades.filter(t => t.symbol === input.symbol && t.status === "closed");
-
-        if (symbolTrades.length < 5) {
-          return {
-            prediction: "insufficient_data",
-            confidence: 0,
-            reasoning: "Need at least 5 closed trades for this symbol to make predictions.",
-            expectedReturn: 0,
-            riskScore: 0,
-          };
-        }
+        const hasEnoughPersonalHistory = symbolTrades.length >= 5;
 
         // Calculate historical performance metrics
         const wins = symbolTrades.filter(t => parseFloat(t.pnl ?? "0") > 0);
@@ -864,11 +855,12 @@ export const appRouter = router({
           messages: [
             {
               role: "system",
-              content: `You are an expert trading analyst. Analyze historical trade data and predict the outcome of a proposed trade.
+              content: `You are an expert trading analyst. Analyze a proposed trade using the trader's history when available, plus current price context and risk/reward.
+If there are fewer than 5 closed trades for this symbol, do NOT refuse. Give a lower-confidence directional/risk read and clearly say personal-history confidence is limited.
               
 Return a JSON analysis with:
 - prediction: "bullish", "bearish", or "neutral"
-- confidence: number 0-100 (percentage)
+- confidence: number 0-100 (percentage). Cap confidence at 55 when there are fewer than 5 closed trades.
 - reasoning: detailed explanation based on historical patterns
 - expectedReturn: expected percentage return
 - riskScore: risk level 1-10 (10 being highest risk)
@@ -891,6 +883,7 @@ CURRENT MARKET:
 - Current Price: $${currentPrice.toFixed(2)}
 
 HISTORICAL PERFORMANCE (${symbolTrades.length} trades):
+- Personal history sample: ${hasEnoughPersonalHistory ? "enough for pattern analysis" : "limited; use lower confidence and focus on setup risk/reward"}
 - Win Rate: ${(winRate * 100).toFixed(1)}%
 - Average Win: $${avgWin.toFixed(2)}
 - Average Loss: $${avgLoss.toFixed(2)}
@@ -929,11 +922,14 @@ ${symbolTrades.slice(-10).map(t =>
 
         return {
           prediction: result.prediction || "neutral",
-          confidence: Math.min(100, Math.max(0, result.confidence || 50)),
+          confidence: Math.min(hasEnoughPersonalHistory ? 100 : 55, Math.max(0, result.confidence || (hasEnoughPersonalHistory ? 50 : 35))),
           reasoning: result.reasoning || "Analysis unavailable",
           expectedReturn: result.expectedReturn || 0,
           riskScore: Math.min(10, Math.max(1, result.riskScore || 5)),
-          keyFactors: result.keyFactors || [],
+          keyFactors: [
+            ...(!hasEnoughPersonalHistory ? [`Limited personal history: ${symbolTrades.length}/5 closed ${input.symbol} trades`] : []),
+            ...(Array.isArray(result.keyFactors) ? result.keyFactors : []),
+          ],
         };
       }),
 
