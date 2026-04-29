@@ -2391,6 +2391,14 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
             (!expectedSide || p.side === expectedSide)
           );
         };
+        const findCloseCandidateOpen = (trade: any) => {
+          const symbol = typeof trade.symbol === "string" ? trade.symbol.toUpperCase() : "";
+          if (symbol) {
+            const bySymbol = openPositions.find((p) => p.symbol.toUpperCase() === symbol);
+            if (bySymbol) return bySymbol;
+          }
+          return openPositions.length === 1 ? openPositions[0] : undefined;
+        };
         const applyMarketClose = (trade: any, matchingOpen: NonNullable<typeof input.openPositions>[number], livePrice: number) => {
           const qty = parseFloat(restIntent || !trade.quantity || trade.quantity === "null" ? matchingOpen.quantity : trade.quantity);
           const entry = parseFloat(matchingOpen.entryPrice);
@@ -2415,9 +2423,15 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
 
         if (input.liveQuotes && Object.keys(input.liveQuotes).length > 0) {
           for (const trade of trades) {
-            const isClose = trade.side === "sell" || trade.side === "cover";
+            const closeLikeTrade = closeIntent && (
+              trade.side === "sell" ||
+              trade.side === "cover" ||
+              trade.status === "closed" ||
+              /\b(close|closed|closing|exit|exited|sell|sold|cover|covered)\b/i.test(String(trade.notes ?? ""))
+            );
+            const isClose = trade.side === "sell" || trade.side === "cover" || closeLikeTrade;
             const hasNoExit = !trade.exitPrice || trade.exitPrice === "" || trade.exitPrice === "null";
-            const matchingOpen = isClose ? findMatchingOpen(trade) : undefined;
+            const matchingOpen = isClose ? (findMatchingOpen(trade) ?? findCloseCandidateOpen(trade)) : undefined;
             const livePrice = matchingOpen ? input.liveQuotes[matchingOpen.symbol.toUpperCase()] : undefined;
             if (isClose && hasNoExit && matchingOpen && livePrice && livePrice > 0) {
               applyMarketClose(trade, matchingOpen, livePrice);
@@ -2435,8 +2449,10 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
             }
           }
 
-          if (closeIntent && restIntent && trades.length === 0 && openPositions.length === 1) {
-            const matchingOpen = openPositions[0];
+          if (closeIntent && trades.length === 0) {
+            const mentionedSymbol = openPositions.find((position) => new RegExp(`\\b${position.symbol}\\b`, "i").test(correctedTranscript));
+            const matchingOpen = mentionedSymbol ?? (openPositions.length === 1 ? openPositions[0] : undefined);
+            if (!matchingOpen) return { trades };
             const livePrice = input.liveQuotes[matchingOpen.symbol.toUpperCase()];
             if (livePrice && livePrice > 0) {
               const trade: any = {

@@ -238,6 +238,58 @@ describe("sessions.extractTrades", () => {
       status: "open",
     });
   });
+
+  it("fills exit price when closing an open symbol even if the model leaves side as buy", async () => {
+    const { invokeLLM } = await import("./_core/llm");
+    (invokeLLM as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            trades: [{
+              symbol: "NVDA",
+              side: "buy",
+              quantity: "5",
+              entryPrice: "900.00",
+              exitPrice: null,
+              pnl: null,
+              takeProfit: null,
+              takeProfit2: null,
+              stopLoss: null,
+              status: "closed",
+              notes: "Trader requested to close their NVDA position.",
+            }],
+          }),
+        },
+      }],
+    });
+
+    const ctx = createMockContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.sessions.extractTrades({
+      transcript: "close my NVDA position",
+      openPositions: [{
+        symbol: "NVDA",
+        side: "buy",
+        quantity: "5",
+        entryPrice: "900.00",
+        takeProfit: null,
+        takeProfit2: null,
+        stopLoss: null,
+        notes: null,
+      }],
+      liveQuotes: { NVDA: 925.5 },
+    });
+
+    expect(result.trades[0]).toMatchObject({
+      symbol: "NVDA",
+      side: "sell",
+      quantity: "5",
+      entryPrice: "900.00",
+      exitPrice: "925.50",
+      pnl: "127.50",
+      status: "closed",
+    });
+  });
 });
 
 describe("aiAssistant.getTradeSignals", () => {
