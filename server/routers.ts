@@ -115,6 +115,16 @@ const calendarSortValue = (value: string) => {
   return Number.isFinite(timestamp) ? timestamp : Number.MAX_SAFE_INTEGER;
 };
 
+const MARKET_FOCUS_EARNINGS_BY_DATE: Record<string, Array<{ symbol: string; company: string; timing: string; watch: string }>> = {
+  "2026-04-29": [
+    { symbol: "GOOGL", company: "Alphabet / Google", timing: "Post-market", watch: "Search ads, YouTube, Google Cloud growth, AI capex, Gemini monetization." },
+    { symbol: "MSFT", company: "Microsoft", timing: "Post-market", watch: "Azure growth, Copilot adoption, AI infrastructure spend, OpenAI relationship commentary." },
+    { symbol: "META", company: "Meta Platforms", timing: "Post-market", watch: "Ad growth, Reels engagement, AI spending, Reality Labs losses and guidance." },
+    { symbol: "AMZN", company: "Amazon", timing: "Post-market", watch: "AWS growth, retail margins, AI demand, capex and operating-income guidance." },
+    { symbol: "SOFI", company: "SoFi Technologies", timing: "Earnings day", watch: "Fintech risk appetite, loan growth, deposits, guidance and credit quality." },
+  ],
+};
+
 async function yahooQuote(symbol: string) {
   const url = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`);
   url.searchParams.set("range", "1d");
@@ -390,6 +400,7 @@ async function fetchEconomicCalendar() {
     description: string;
     source?: string;
     category?: string;
+    symbol?: string;
   }> = [
     {
       event: "FOMC Rate Decision",
@@ -419,6 +430,17 @@ async function fetchEconomicCalendar() {
       description: "Inflation data around the Fed decision can change rate-cut expectations and move growth stocks sharply.",
     },
   ];
+  const marketFocusEarnings = MARKET_FOCUS_EARNINGS_BY_DATE[today] ?? [];
+  events.push(...marketFocusEarnings.map((item) => ({
+    event: `${item.symbol} Earnings (${item.timing})`,
+    country: "US",
+    date: today,
+    impact: "High",
+    category: "Market Focus",
+    source: "Curated market focus",
+    symbol: item.symbol,
+    description: `${item.company} reports today. Why traders care: ${item.watch}`,
+  })));
 
   if (ENV.finnhubApiKey) {
     try {
@@ -463,6 +485,7 @@ async function fetchEconomicCalendar() {
             impact: importantSymbols.has(symbol) ? "High" : "Medium",
             category: "Earnings",
             source: "Finnhub earnings calendar",
+            symbol,
             description: `${symbol} reports earnings.${epsEstimate}${revenueEstimate} Watch guidance, margins, AI/capex commentary, and peer read-through.`,
           };
         }));
@@ -474,7 +497,10 @@ async function fetchEconomicCalendar() {
   const seen = new Set<string>();
   return events
     .filter((event) => {
-      const key = `${event.event.toLowerCase()}-${parseCalendarDate(event.date)}`;
+      const symbolKey = "symbol" in event && event.symbol ? String(event.symbol).toUpperCase() : "";
+      const key = symbolKey && /earnings/i.test(event.event)
+        ? `earnings-${symbolKey}-${parseCalendarDate(event.date)}`
+        : `${event.event.toLowerCase()}-${parseCalendarDate(event.date)}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -486,6 +512,14 @@ async function fetchEconomicCalendar() {
       const impactRank: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
       const impactDiff = (impactRank[a.impact] ?? 3) - (impactRank[b.impact] ?? 3);
       if (impactDiff !== 0) return impactDiff;
+      const focusRank = (event: typeof a) => {
+        if (event.event.includes("FOMC")) return 0;
+        if (event.category === "Market Focus") return 1;
+        if (event.category === "Earnings") return 2;
+        return 3;
+      };
+      const focusDiff = focusRank(a) - focusRank(b);
+      if (focusDiff !== 0) return focusDiff;
       return calendarSortValue(a.date) - calendarSortValue(b.date);
     });
 }
