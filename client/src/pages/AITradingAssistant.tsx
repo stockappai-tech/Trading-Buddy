@@ -53,18 +53,18 @@ export default function AITradingAssistant() {
       timeframe,
     },
     {
-      enabled: Boolean(selectedSymbol && entryPrice && quantity),
+      enabled: false,
     }
   );
 
   const sentimentAnalysis = trpc.aiAssistant.getSentimentAnalysis.useQuery(
     { symbols: portfolioSymbols.filter(Boolean) },
-    { enabled: portfolioSymbols.length > 0 }
+    { enabled: false }
   );
 
   const tradeSignals = trpc.aiAssistant.getTradeSignals.useQuery(
     { symbols: portfolioSymbols.filter(Boolean) },
-    { enabled: portfolioSymbols.length > 0 }
+    { enabled: false }
   );
 
   const portfolioOptimization = trpc.aiAssistant.optimizePortfolio.useQuery(
@@ -73,39 +73,43 @@ export default function AITradingAssistant() {
       riskTolerance,
       targetSymbols: portfolioSymbols.filter(Boolean),
     },
-    { enabled: Boolean(accountSize) }
+    { enabled: false }
   );
 
-  const handlePredictTrade = () => {
+  const handlePredictTrade = async () => {
     if (!selectedSymbol || !entryPrice || !quantity) {
       toast.error("Please fill in symbol, entry price, and quantity");
       return;
     }
-    predictTrade.refetch();
+    const result = await predictTrade.refetch();
+    if (result.error) toast.error(result.error.message);
   };
 
-  const handleSentimentAnalysis = () => {
+  const handleSentimentAnalysis = async () => {
     if (portfolioSymbols.length === 0) {
       toast.error("Please add at least one symbol");
       return;
     }
-    sentimentAnalysis.refetch();
+    const result = await sentimentAnalysis.refetch();
+    if (result.error) toast.error(result.error.message);
   };
 
-  const handleTradeSignals = () => {
+  const handleTradeSignals = async () => {
     if (portfolioSymbols.length === 0) {
       toast.error("Please add at least one symbol");
       return;
     }
-    tradeSignals.refetch();
+    const result = await tradeSignals.refetch();
+    if (result.error) toast.error(result.error.message);
   };
 
-  const handlePortfolioOptimization = () => {
+  const handlePortfolioOptimization = async () => {
     if (!accountSize) {
       toast.error("Please enter account size");
       return;
     }
-    portfolioOptimization.refetch();
+    const result = await portfolioOptimization.refetch();
+    if (result.error) toast.error(result.error.message);
   };
 
   const predictionKeyFactors = asArray<string>(predictTrade.data?.keyFactors);
@@ -228,8 +232,8 @@ export default function AITradingAssistant() {
                   </div>
                 </div>
 
-                <Button onClick={handlePredictTrade} disabled={predictTrade.isLoading}>
-                  {predictTrade.isLoading ? (
+                <Button onClick={handlePredictTrade} disabled={predictTrade.isFetching}>
+                  {predictTrade.isFetching ? (
                     <>
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                       Analyzing...
@@ -318,8 +322,8 @@ export default function AITradingAssistant() {
                   />
                 </div>
 
-                <Button onClick={handleSentimentAnalysis} disabled={sentimentAnalysis.isLoading}>
-                  {sentimentAnalysis.isLoading ? (
+                <Button onClick={handleSentimentAnalysis} disabled={sentimentAnalysis.isFetching}>
+                  {sentimentAnalysis.isFetching ? (
                     <>
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                       Analyzing...
@@ -399,8 +403,8 @@ export default function AITradingAssistant() {
                   />
                 </div>
 
-                <Button onClick={handleTradeSignals} disabled={tradeSignals.isLoading}>
-                  {tradeSignals.isLoading ? (
+                <Button onClick={handleTradeSignals} disabled={tradeSignals.isFetching}>
+                  {tradeSignals.isFetching ? (
                     <>
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                       Generating Signals...
@@ -522,8 +526,8 @@ export default function AITradingAssistant() {
                   />
                 </div>
 
-                <Button onClick={handlePortfolioOptimization} disabled={portfolioOptimization.isLoading}>
-                  {portfolioOptimization.isLoading ? (
+                <Button onClick={handlePortfolioOptimization} disabled={portfolioOptimization.isFetching}>
+                  {portfolioOptimization.isFetching ? (
                     <>
                       <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                       Optimizing...
