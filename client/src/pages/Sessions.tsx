@@ -134,7 +134,11 @@ export default function Sessions() {
     }
   };
 
-  const selectedSession = sessions?.find((s) => s.id === selectedId);
+  const detailedSessions = useMemo(() => {
+    return (sessions ?? [])
+      .filter((session) => Boolean(session.coachFeedback || session.summary || session.transcript || session.emotionalNote))
+      .slice(0, 10);
+  }, [sessions]);
 
   return (
     <DashboardLayout>
@@ -403,23 +407,27 @@ export default function Sessions() {
 
         {tab === "sessions" && (
           <div className="space-y-4">
-            <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
-              <FileText className="h-4 w-4 text-primary" /> Recent Sessions
-            </h2>
+            <div>
+              <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <FileText className="h-4 w-4 text-primary" /> Recent Sessions
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">Showing the latest {Math.min(detailedSessions.length, 10)} sessions with details.</p>
+            </div>
             {sessionsLoading ? (
               <p className="text-sm text-muted-foreground">Loading sessions...</p>
-            ) : !sessions || sessions.length === 0 ? (
+            ) : detailedSessions.length === 0 ? (
               <Card className="bg-card border-border">
                 <CardContent className="p-6 text-center">
                   <Mic className="h-8 w-8 text-muted-foreground mx-auto mb-2 opacity-40" />
-                  <p className="text-sm text-muted-foreground">No sessions yet</p>
+                  <p className="text-sm text-muted-foreground">No detailed sessions yet</p>
+                  <p className="text-xs text-muted-foreground mt-1">Sessions with no feedback, transcript, summary, or note are hidden here.</p>
                   <Button size="sm" variant="outline" onClick={() => navigate("/record")} className="mt-3 border-border text-xs">
                     Record your first session
                   </Button>
                 </CardContent>
               </Card>
             ) : (
-              sessions.map((session) => (
+              detailedSessions.map((session) => (
                 <Card
                   key={session.id}
                   className={`bg-card border cursor-pointer transition-colors ${selectedId === session.id ? "border-primary/50" : "border-border hover:border-border/80"}`}
@@ -437,9 +445,9 @@ export default function Sessions() {
                         )}
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
-                        {session.coachFeedback && (
+                        {(session.coachFeedback || session.summary || session.transcript || session.emotionalNote) && (
                           <Badge variant="outline" className="text-xs border-primary/30 text-primary">
-                            <Bot className="h-2.5 w-2.5 mr-1" /> AI
+                            <Bot className="h-2.5 w-2.5 mr-1" /> Details
                           </Badge>
                         )}
                         <Button
@@ -454,12 +462,34 @@ export default function Sessions() {
                       </div>
                     </div>
 
-                    {selectedId === session.id && session.coachFeedback && (
-                      <div className="mt-3 pt-3 border-t border-border">
-                        <p className="text-xs text-muted-foreground mb-1 font-semibold">AI Coach Feedback:</p>
-                        <div className="text-xs text-foreground/80 prose-xs">
-                          <CoachFeedback content={session.coachFeedback} />
-                        </div>
+                    {selectedId === session.id && (
+                      <div className="mt-3 space-y-3 border-t border-border pt-3">
+                        {session.coachFeedback && (
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1 font-semibold">AI Coach Feedback:</p>
+                            <div className="text-xs text-foreground/80 prose-xs">
+                              <CoachFeedback content={session.coachFeedback} />
+                            </div>
+                          </div>
+                        )}
+                        {session.summary && (
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1 font-semibold">Summary:</p>
+                            <p className="text-xs text-foreground/80 whitespace-pre-wrap">{session.summary}</p>
+                          </div>
+                        )}
+                        {session.emotionalNote && (
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1 font-semibold">Emotional Note:</p>
+                            <p className="text-xs text-foreground/80 italic">"{session.emotionalNote}"</p>
+                          </div>
+                        )}
+                        {session.transcript && (
+                          <div>
+                            <p className="text-xs text-muted-foreground mb-1 font-semibold">Transcript:</p>
+                            <p className="max-h-32 overflow-auto rounded-md bg-muted/30 p-2 text-xs text-foreground/80 whitespace-pre-wrap">{session.transcript}</p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </CardContent>
