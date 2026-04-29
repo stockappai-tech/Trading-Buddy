@@ -209,7 +209,7 @@ describe("aiAssistant.getTradeSignals", () => {
           content: JSON.stringify({
             signal: "HOLD",
             confidence: 50,
-            reasoning: "With no historical trades for RGTI, confidence is limited.",
+            reasoning: "With no historical personal trade data for RGTI, confidence is limited.",
             entryPrice: "current",
             stopLoss: "5%",
             takeProfit: "10%",
@@ -230,7 +230,7 @@ describe("aiAssistant.getTradeSignals", () => {
     expect(result[0].symbol).toBe("AAPL");
     expect(result[0].reasoning).toContain("AAPL");
     expect(result[0].reasoning).not.toContain("RGTI");
-    expect(result[0].reasoning).not.toMatch(/historical trades|closed trades/i);
+    expect(result[0].reasoning).not.toMatch(/historical|personal trade|closed trades/i);
   });
 });
 

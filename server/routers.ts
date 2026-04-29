@@ -197,12 +197,12 @@ function buildMarketSignalReasoning(symbol: string, currentPrice: number, change
     sentimentScore > 0.1 ? "positive" :
     sentimentScore < -0.1 ? "negative" :
     "neutral";
-  return `${symbol} signal is based on current price ${currentPrice > 0 ? `$${currentPrice.toFixed(2)}` : "data"}, today's ${changePercent >= 0 ? "positive" : "negative"} move of ${Math.abs(changePercent).toFixed(2)}%, and ${sentiment} recent-news sentiment. Multi-ticker signals do not use your personal trade history, so treat this as market setup guidance rather than a personalized historical edge.`;
+  return `${symbol} signal is based on current price ${currentPrice > 0 ? `$${currentPrice.toFixed(2)}` : "data"}, today's ${changePercent >= 0 ? "positive" : "negative"} move of ${Math.abs(changePercent).toFixed(2)}%, and ${sentiment} recent-news sentiment. Treat this as market setup guidance, then confirm it against your own entry, stop, and plan before taking the trade.`;
 }
 
 function sanitizeMarketSignalReasoning(symbol: string, reasoning: unknown, currentPrice: number, changePercent: number, sentimentScore: number) {
   const text = typeof reasoning === "string" ? reasoning.trim() : "";
-  if (!text || /\b(historical trades?|personal history|closed trades?)\b/i.test(text)) {
+  if (!text || /\b(no historical|historical\b.*\b(trade|personal|data)|personal\b.*\b(history|trade|data)|closed trades?)\b/i.test(text)) {
     return buildMarketSignalReasoning(symbol, currentPrice, changePercent, sentimentScore);
   }
   return text;
