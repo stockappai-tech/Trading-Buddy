@@ -175,7 +175,7 @@ export default function VoiceRecording() {
       // Kick off live quote fetch for extracted symbols (used for price magnitude correction)
       const symbols = (extracted.trades as ExtractedTrade[]).map((t) => t.symbol).join(",");
       if (symbols) setExtractedSymbols(symbols);
-      setExtractedTrades(applyTpSlDefaults(extracted.trades as ExtractedTrade[], liveQuoteMap));
+      setExtractedTrades(applyTpSlDefaults(extracted.trades as ExtractedTrade[], preQuoteMap));
       setState("reviewing");
     } catch (err: any) {
       toast.error(err.message ?? "Transcription failed");
@@ -227,23 +227,50 @@ export default function VoiceRecording() {
       // If a trade is a close (has exitPrice) AND matches an existing open position,
       // close it fully or reduce its quantity for a partial exit.
       for (const trade of extractedTrades) {
-        const status = trade.exitPrice ? "closed" : (trade.status ?? "open");
+        let tradeToSave = { ...trade };
+        const closeLikeTrade = tradeToSave.side === "sell" ||
+          tradeToSave.side === "cover" ||
+          tradeToSave.status === "closed" ||
+          /\b(close|closed|closing|exit|exited|sell|sold|cover|covered)\b/i.test(String(tradeToSave.notes ?? ""));
 
         // Try to find a matching open trade to update (same symbol, opposite side)
-        const matchingSide = trade.side === "sell" ? "buy" : trade.side === "cover" ? "short" : null;
-        const matchingOpen = matchingSide && openTradesData
-          ? openTradesData.find(o => o.symbol === trade.symbol && o.side === matchingSide)
+        const matchingSide = tradeToSave.side === "sell" ? "buy" : tradeToSave.side === "cover" ? "short" : null;
+        const matchingOpen = openTradesData
+          ? openTradesData.find(o => o.symbol === tradeToSave.symbol && (matchingSide ? o.side === matchingSide : closeLikeTrade))
           : null;
 
-        if (matchingOpen && trade.exitPrice) {
+        if (matchingOpen && closeLikeTrade && !tradeToSave.exitPrice) {
+          try {
+            const freshQuotes = await utils.market.quotes.fetch({ symbols: matchingOpen.symbol });
+            const quote = (freshQuotes as Array<{ symbol: string; last: number }>).find((q) => q.symbol === matchingOpen.symbol);
+            if (quote?.last) {
+              tradeToSave = {
+                ...tradeToSave,
+                symbol: matchingOpen.symbol,
+                side: matchingOpen.side === "short" ? "cover" : "sell",
+                quantity: tradeToSave.quantity || matchingOpen.quantity,
+                entryPrice: matchingOpen.entryPrice,
+                exitPrice: quote.last.toFixed(2),
+                status: "closed",
+                notes: tradeToSave.notes ?? "Closed at live market price",
+              };
+            }
+          } catch {
+            // If quote fetch fails, fall through and keep the trade editable instead of crashing save.
+          }
+        }
+
+        const status = tradeToSave.exitPrice ? "closed" : (tradeToSave.status ?? "open");
+
+        if (matchingOpen && tradeToSave.exitPrice) {
           const openQty = parseFloat(matchingOpen.quantity);
-          const closeQty = parseFloat(trade.quantity);
+          const closeQty = parseFloat(tradeToSave.quantity);
           const entry = parseFloat(matchingOpen.entryPrice);
-          const exit = parseFloat(trade.exitPrice);
+          const exit = parseFloat(tradeToSave.exitPrice);
           const isShortClose = matchingOpen.side === "short";
           const calculatedPnl = !isNaN(closeQty) && !isNaN(entry) && !isNaN(exit)
             ? (isShortClose ? (entry - exit) * closeQty : (exit - entry) * closeQty).toFixed(2)
-            : trade.pnl;
+            : tradeToSave.pnl;
 
           if (!isNaN(openQty) && !isNaN(closeQty) && closeQty > 0 && closeQty < openQty) {
             const remainingQty = openQty - closeQty;
@@ -252,9 +279,9 @@ export default function VoiceRecording() {
             await updateTradeMutation.mutateAsync({
               id: matchingOpen.id,
               quantity: remainingQty % 1 === 0 ? String(Math.round(remainingQty)) : remainingQty.toFixed(4),
-              takeProfit: trade.takeProfit ?? matchingOpen.takeProfit ?? undefined,
-              takeProfit2: trade.takeProfit2 ?? matchingOpen.takeProfit2 ?? undefined,
-              stopLoss: trade.stopLoss ?? matchingOpen.stopLoss ?? undefined,
+              takeProfit: tradeToSave.takeProfit ?? matchingOpen.takeProfit ?? undefined,
+              takeProfit2: tradeToSave.takeProfit2 ?? matchingOpen.takeProfit2 ?? undefined,
+              stopLoss: tradeToSave.stopLoss ?? matchingOpen.stopLoss ?? undefined,
               notes: matchingOpen.notes ?? undefined,
             });
 
@@ -262,33 +289,33 @@ export default function VoiceRecording() {
             await createTrade.mutateAsync({
               symbol: matchingOpen.symbol,
               side: matchingOpen.side,
-              quantity: trade.quantity,
+              quantity: tradeToSave.quantity,
               entryPrice: matchingOpen.entryPrice,
-              exitPrice: trade.exitPrice,
+              exitPrice: tradeToSave.exitPrice,
               pnl: calculatedPnl,
               status: "closed",
-              takeProfit: trade.takeProfit ?? matchingOpen.takeProfit ?? undefined,
-              takeProfit2: trade.takeProfit2 ?? matchingOpen.takeProfit2 ?? undefined,
-              stopLoss: trade.stopLoss ?? matchingOpen.stopLoss ?? undefined,
-              notes: trade.notes ?? `Partial close via ${trade.side}`,
+              takeProfit: tradeToSave.takeProfit ?? matchingOpen.takeProfit ?? undefined,
+              takeProfit2: tradeToSave.takeProfit2 ?? matchingOpen.takeProfit2 ?? undefined,
+              stopLoss: tradeToSave.stopLoss ?? matchingOpen.stopLoss ?? undefined,
+              notes: tradeToSave.notes ?? `Partial close via ${tradeToSave.side}`,
               sessionId,
             });
           } else {
             // Full close: update the original open trade with exit data.
             await updateTradeMutation.mutateAsync({
               id: matchingOpen.id,
-              exitPrice: trade.exitPrice,
+              exitPrice: tradeToSave.exitPrice,
               pnl: calculatedPnl,
               status: "closed",
-              takeProfit: trade.takeProfit ?? matchingOpen.takeProfit ?? undefined,
-              takeProfit2: trade.takeProfit2 ?? matchingOpen.takeProfit2 ?? undefined,
-              stopLoss: trade.stopLoss ?? matchingOpen.stopLoss ?? undefined,
-              notes: trade.notes ?? matchingOpen.notes ?? undefined,
+              takeProfit: tradeToSave.takeProfit ?? matchingOpen.takeProfit ?? undefined,
+              takeProfit2: tradeToSave.takeProfit2 ?? matchingOpen.takeProfit2 ?? undefined,
+              stopLoss: tradeToSave.stopLoss ?? matchingOpen.stopLoss ?? undefined,
+              notes: tradeToSave.notes ?? matchingOpen.notes ?? undefined,
             });
           }
         } else {
           // No matching open trade — create as new
-          await createTrade.mutateAsync({ ...trade, status, sessionId });
+          await createTrade.mutateAsync({ ...tradeToSave, status, sessionId });
         }
       }
 

@@ -2420,57 +2420,62 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
             trade.pnl = (isShort ? (entry - exit) * qty : (exit - entry) * qty).toFixed(2);
           }
         };
+        const getLivePriceFor = async (symbol: string) => {
+          const fromClient = input.liveQuotes?.[symbol.toUpperCase()];
+          if (fromClient && fromClient > 0) return fromClient;
+          const quote = await getBestQuote(symbol);
+          return quote.currentPrice > 0 ? quote.currentPrice : undefined;
+        };
 
-        if (input.liveQuotes && Object.keys(input.liveQuotes).length > 0) {
-          for (const trade of trades) {
-            const closeLikeTrade = closeIntent && (
-              trade.side === "sell" ||
-              trade.side === "cover" ||
-              trade.status === "closed" ||
-              /\b(close|closed|closing|exit|exited|sell|sold|cover|covered)\b/i.test(String(trade.notes ?? ""))
-            );
-            const isClose = trade.side === "sell" || trade.side === "cover" || closeLikeTrade;
-            const hasNoExit = !trade.exitPrice || trade.exitPrice === "" || trade.exitPrice === "null";
-            const matchingOpen = isClose ? (findMatchingOpen(trade) ?? findCloseCandidateOpen(trade)) : undefined;
-            const livePrice = matchingOpen ? input.liveQuotes[matchingOpen.symbol.toUpperCase()] : undefined;
-            if (isClose && hasNoExit && matchingOpen && livePrice && livePrice > 0) {
-              applyMarketClose(trade, matchingOpen, livePrice);
-            }
-
-            const symbol = typeof trade.symbol === "string" ? trade.symbol.toUpperCase() : "";
-            const liveEntryPrice = symbol ? input.liveQuotes[symbol] : undefined;
-            const entryText = typeof trade.entryPrice === "string" ? trade.entryPrice.trim().toLowerCase() : "";
-            const missingOrMarketEntry = !entryText || entryText === "null" || entryText === "market" || entryText === "market price" || entryText === "current" || entryText === "current price" || Number(entryText) <= 0;
-            if (!isClose && marketEntryIntent && missingOrMarketEntry && liveEntryPrice && liveEntryPrice > 0) {
-              trade.symbol = symbol;
-              trade.entryPrice = liveEntryPrice.toFixed(2);
-              trade.status = trade.status === "closed" ? "closed" : "open";
-              trade.notes = trade.notes ? `${trade.notes} | Entry filled at live market price` : "Entry filled at live market price";
-            }
+        for (const trade of trades) {
+          const closeLikeTrade = closeIntent && (
+            trade.side === "sell" ||
+            trade.side === "cover" ||
+            trade.status === "closed" ||
+            /\b(close|closed|closing|exit|exited|sell|sold|cover|covered)\b/i.test(String(trade.notes ?? ""))
+          );
+          const isClose = trade.side === "sell" || trade.side === "cover" || closeLikeTrade;
+          const hasNoExit = !trade.exitPrice || trade.exitPrice === "" || trade.exitPrice === "null";
+          const matchingOpen = isClose ? (findMatchingOpen(trade) ?? findCloseCandidateOpen(trade)) : undefined;
+          const livePrice = matchingOpen ? await getLivePriceFor(matchingOpen.symbol) : undefined;
+          if (isClose && hasNoExit && matchingOpen && livePrice && livePrice > 0) {
+            applyMarketClose(trade, matchingOpen, livePrice);
           }
 
-          if (closeIntent && trades.length === 0) {
-            const mentionedSymbol = openPositions.find((position) => new RegExp(`\\b${position.symbol}\\b`, "i").test(correctedTranscript));
-            const matchingOpen = mentionedSymbol ?? (openPositions.length === 1 ? openPositions[0] : undefined);
-            if (!matchingOpen) return { trades };
-            const livePrice = input.liveQuotes[matchingOpen.symbol.toUpperCase()];
+          const symbol = typeof trade.symbol === "string" ? trade.symbol.toUpperCase() : "";
+          const liveEntryPrice = symbol ? await getLivePriceFor(symbol) : undefined;
+          const entryText = typeof trade.entryPrice === "string" ? trade.entryPrice.trim().toLowerCase() : "";
+          const missingOrMarketEntry = !entryText || entryText === "null" || entryText === "market" || entryText === "market price" || entryText === "current" || entryText === "current price" || Number(entryText) <= 0;
+          if (!isClose && marketEntryIntent && missingOrMarketEntry && liveEntryPrice && liveEntryPrice > 0) {
+            trade.symbol = symbol;
+            trade.entryPrice = liveEntryPrice.toFixed(2);
+            trade.status = trade.status === "closed" ? "closed" : "open";
+            trade.notes = trade.notes ? `${trade.notes} | Entry filled at live market price` : "Entry filled at live market price";
+          }
+        }
+
+        if (closeIntent && trades.length === 0) {
+          const mentionedSymbol = openPositions.find((position) => new RegExp(`\\b${position.symbol}\\b`, "i").test(correctedTranscript));
+          const matchingOpen = mentionedSymbol ?? (openPositions.length === 1 ? openPositions[0] : undefined);
+          if (matchingOpen) {
+            const livePrice = await getLivePriceFor(matchingOpen.symbol);
             if (livePrice && livePrice > 0) {
               const trade: any = {
-                symbol: matchingOpen.symbol,
-                side: matchingOpen.side === "short" ? "cover" : "sell",
-                quantity: matchingOpen.quantity,
-                entryPrice: matchingOpen.entryPrice,
-                exitPrice: null,
-                pnl: null,
-                takeProfit: matchingOpen.takeProfit ?? null,
-                takeProfit2: matchingOpen.takeProfit2 ?? null,
-                stopLoss: matchingOpen.stopLoss ?? null,
-                status: "closed",
-                notes: "Closed remaining position at market",
-              };
-              applyMarketClose(trade, matchingOpen, livePrice);
-              trades.push(trade);
-            }
+                  symbol: matchingOpen.symbol,
+                  side: matchingOpen.side === "short" ? "cover" : "sell",
+                  quantity: matchingOpen.quantity,
+                  entryPrice: matchingOpen.entryPrice,
+                  exitPrice: null,
+                  pnl: null,
+                  takeProfit: matchingOpen.takeProfit ?? null,
+                  takeProfit2: matchingOpen.takeProfit2 ?? null,
+                  stopLoss: matchingOpen.stopLoss ?? null,
+                  status: "closed",
+                  notes: "Closed remaining position at market",
+                };
+                applyMarketClose(trade, matchingOpen, livePrice);
+                trades.push(trade);
+              }
           }
         }
 
