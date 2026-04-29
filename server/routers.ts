@@ -156,6 +156,32 @@ async function yahooQuote(symbol: string) {
   };
 }
 
+async function yahooHistoricalPrices(symbol: string, resolution: string, count: number) {
+  const range = resolution === "1D" ? `${Math.max(count, 5)}d` : resolution === "1W" ? `${Math.max(count, 5)}wk` : `${Math.max(count, 3)}mo`;
+  const interval = resolution === "1D" ? "1d" : resolution === "1W" ? "1wk" : "1mo";
+  const url = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`);
+  url.searchParams.set("range", range);
+  url.searchParams.set("interval", interval);
+  const res = await fetch(url.toString(), { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error(`Yahoo historical API error: ${res.status}`);
+
+  const payload = await res.json() as any;
+  const result = payload?.chart?.result?.[0];
+  const timestamps = Array.isArray(result?.timestamp) ? result.timestamp : [];
+  const quote = result?.indicators?.quote?.[0] ?? {};
+  const rows = timestamps.map((timestamp: number, index: number) => ({
+    date: new Date(timestamp * 1000).toISOString(),
+    open: Number(quote.open?.[index] ?? quote.close?.[index] ?? 0),
+    high: Number(quote.high?.[index] ?? quote.close?.[index] ?? 0),
+    low: Number(quote.low?.[index] ?? quote.close?.[index] ?? 0),
+    close: Number(quote.close?.[index] ?? 0),
+    volume: Number(quote.volume?.[index] ?? 0),
+    source: "Yahoo",
+  }));
+
+  return rows.filter((row: { close: number }) => row.close > 0).slice(-count);
+}
+
 async function coingeckoRequest(path: string, params?: Record<string, string>) {
   const base = "https://api.coingecko.com/api/v3";
   const url = new URL(`${base}${path}`);
@@ -2570,29 +2596,38 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
       }))
       .query(async ({ ctx: _ctx, input }) => {
         if (input.assetType === "stock") {
-          if (!ENV.finnhubApiKey) {
+          if (ENV.finnhubApiKey) {
+            try {
+              const now = Math.floor(Date.now() / 1000);
+              const resolution = resolutionToFinnhub(input.resolution);
+              const from = now - (resolutionSeconds(input.resolution) * input.count);
+              const data = await finnhubRequest("/stock/candle", {
+                symbol: input.symbol,
+                resolution,
+                from: String(from),
+                to: String(now),
+              }) as any;
+              if (data.s === "ok" && Array.isArray(data.t)) {
+                return data.t.map((timestamp: number, index: number) => ({
+                  date: new Date(timestamp * 1000).toISOString(),
+                  open: data.o[index],
+                  high: data.h[index],
+                  low: data.l[index],
+                  close: data.c[index],
+                  volume: data.v[index],
+                  source: "Finnhub",
+                }));
+              }
+            } catch {
+              // Fall back to Yahoo below when Finnhub candles are unavailable.
+            }
+          }
+
+          try {
+            return await yahooHistoricalPrices(input.symbol, input.resolution, input.count);
+          } catch {
             return [];
           }
-          const now = Math.floor(Date.now() / 1000);
-          const resolution = resolutionToFinnhub(input.resolution);
-          const from = now - (resolutionSeconds(input.resolution) * input.count);
-          const data = await finnhubRequest("/stock/candle", {
-            symbol: input.symbol,
-            resolution,
-            from: String(from),
-            to: String(now),
-          }) as any;
-          if (data.s !== "ok" || !Array.isArray(data.t)) {
-            return [];
-          }
-          return data.t.map((timestamp: number, index: number) => ({
-            date: new Date(timestamp * 1000).toISOString(),
-            open: data.o[index],
-            high: data.h[index],
-            low: data.l[index],
-            close: data.c[index],
-            volume: data.v[index],
-          }));
         }
 
         const id = getCoinGeckoId(input.symbol);

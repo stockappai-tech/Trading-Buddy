@@ -104,6 +104,13 @@ export default function MarketData() {
   const latestCryptoQuote = cryptoQuotes.data?.[0];
   const latestStockQuote = stockQuotes.data?.[0];
   const isLoading = historical1D.isLoading || historical1W.isLoading || historical1M.isLoading;
+  const marketDataError =
+    historical1D.error?.message ||
+    historical1W.error?.message ||
+    historical1M.error?.message ||
+    stockQuotes.error?.message ||
+    cryptoQuotes.error?.message ||
+    optionsChain.error?.message;
 
   return (
     <DashboardLayout>
@@ -192,10 +199,32 @@ export default function MarketData() {
               </CardTitle>
             </CardHeader>
             <CardContent className="h-[380px]">
-              {isLoading ? (
+              {marketDataError ? (
+                <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+                  <p>Market data could not load right now.</p>
+                  <p className="max-w-md text-xs">{marketDataError}</p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      historical1D.refetch();
+                      historical1W.refetch();
+                      historical1M.refetch();
+                      stockQuotes.refetch();
+                      optionsChain.refetch();
+                      cryptoQuotes.refetch();
+                    }}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" /> Try Again
+                  </Button>
+                </div>
+              ) : isLoading ? (
                 <div className="flex h-full items-center justify-center text-muted-foreground">Loading chart...</div>
               ) : combinedChartData.length === 0 ? (
-                <div className="flex h-full items-center justify-center text-muted-foreground">No historical data available</div>
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-muted-foreground">
+                  <p>No historical data available for {symbol.toUpperCase()}.</p>
+                  <p className="text-xs">Try a liquid US ticker like AAPL, NVDA, MSFT, META, or GOOGL.</p>
+                </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={combinedChartData} margin={{ top: 10, right: 16, left: 0, bottom: 8 }}>
@@ -265,7 +294,10 @@ export default function MarketData() {
                     <p className="text-xs text-muted-foreground">Live quote refreshes automatically every 10 seconds.</p>
                   </div>
                 ) : (
-                  <div className="text-sm text-muted-foreground">Loading stock quote...</div>
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <p>{stockQuotes.isError ? "Stock quote could not load." : "Loading stock quote..."}</p>
+                    {stockQuotes.error?.message && <p className="text-xs">{stockQuotes.error.message}</p>}
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -450,6 +482,7 @@ export default function MarketData() {
           historical1M.refetch();
           optionsChain.refetch();
           cryptoQuotes.refetch();
+          stockQuotes.refetch();
         }}>
           <RefreshCw className="h-4 w-4 mr-2" /> Refresh Data
         </Button>
