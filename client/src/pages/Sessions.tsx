@@ -327,8 +327,23 @@ export default function Sessions() {
                   // Live price for article's symbol
                   const articleSym = typeof item.symbol === "string" ? item.symbol.toUpperCase() : "";
                   const q = articleSym ? quoteMap[articleSym] : null;
+                  const openArticle = () => {
+                    if (url) window.open(url, "_blank", "noopener,noreferrer");
+                  };
                   return (
-                    <Card key={i} className="bg-card border-border hover:border-primary/30 transition-colors">
+                    <Card
+                      key={i}
+                      role={url ? "link" : undefined}
+                      tabIndex={url ? 0 : undefined}
+                      onClick={openArticle}
+                      onKeyDown={(event) => {
+                        if (url && (event.key === "Enter" || event.key === " ")) {
+                          event.preventDefault();
+                          openArticle();
+                        }
+                      }}
+                      className={`bg-card border-border transition-colors ${url ? "cursor-pointer hover:border-primary/50 hover:bg-muted/20" : "hover:border-primary/30"}`}
+                    >
                       <CardContent className="p-3">
                         <div className="flex items-start gap-3">
                           {image && (
@@ -350,7 +365,7 @@ export default function Sessions() {
                                 </span>
                               )}
                               {url && (
-                                <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary flex items-center gap-0.5 hover:underline ml-auto">
+                                <a href={url} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()} className="text-xs text-primary flex items-center gap-0.5 hover:underline ml-auto">
                                   Read <ExternalLink className="h-2.5 w-2.5" />
                                 </a>
                               )}
