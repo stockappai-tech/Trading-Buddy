@@ -794,7 +794,9 @@ describe("market.news (Finnhub)", () => {
   it("tags NewsAPI articles with the matching article symbol instead of the first watchlist symbol", async () => {
     const { ENV } = await import("./_core/env");
     const originalNewsApiKey = ENV.newsApiKey;
+    const originalFinnhubApiKey = ENV.finnhubApiKey;
     (ENV as any).newsApiKey = "test-news-api-key";
+    (ENV as any).finnhubApiKey = "";
     process.env.NEWS_API_KEY = "test-news-api-key";
     try {
       mockFetch.mockResolvedValue({
@@ -831,6 +833,63 @@ describe("market.news (Finnhub)", () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
     } finally {
       (ENV as any).newsApiKey = originalNewsApiKey;
+      (ENV as any).finnhubApiKey = originalFinnhubApiKey;
+    }
+  });
+
+  it("prioritizes today's news over older provider results", async () => {
+    const { ENV } = await import("./_core/env");
+    const originalNewsApiKey = ENV.newsApiKey;
+    const originalFinnhubApiKey = ENV.finnhubApiKey;
+    (ENV as any).newsApiKey = "test-news-api-key";
+    (ENV as any).finnhubApiKey = "test-finnhub-key";
+    const todaySeconds = Math.floor(Date.now() / 1000);
+    const yesterdayIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    try {
+      mockFetch.mockImplementation(async (url: string) => {
+        if (String(url).includes("newsapi.org")) {
+          return {
+            ok: true,
+            json: async () => ({
+              status: "ok",
+              articles: [{
+                title: "TSLA older analyst note",
+                description: "Yesterday's Tesla headline.",
+                url: "https://example.com/old-tsla",
+                source: { name: "Old News" },
+                urlToImage: "",
+                publishedAt: yesterdayIso,
+              }],
+            }),
+          };
+        }
+
+        return {
+          ok: true,
+          json: async () => ([{
+            category: "company",
+            datetime: todaySeconds,
+            headline: "TSLA fresh delivery update",
+            id: 2,
+            image: "",
+            related: "TSLA",
+            source: "Finnhub",
+            summary: "Fresh Tesla headline from today.",
+            url: "https://example.com/today-tsla",
+          }]),
+        };
+      });
+
+      const ctx = createMockContext();
+      const caller = appRouter.createCaller(ctx);
+      const result = await caller.market.news({ symbols: ["TSLA"] });
+
+      expect((result[0] as any).headline).toBe("TSLA fresh delivery update");
+      expect(result.some((article: any) => article.headline === "TSLA older analyst note")).toBe(false);
+    } finally {
+      (ENV as any).newsApiKey = originalNewsApiKey;
+      (ENV as any).finnhubApiKey = originalFinnhubApiKey;
     }
   });
 });

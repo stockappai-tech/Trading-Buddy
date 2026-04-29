@@ -2726,8 +2726,20 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
       .query(async ({ ctx: _ctx, input }) => {
         if (input.symbols.length === 0) return [];
 
-        const symbolQuery = input.symbols.slice(0, 6).join(" OR ");
+        const symbols = input.symbols.slice(0, 6).map((symbol) => symbol.trim().toUpperCase()).filter(Boolean);
+        const symbolQuery = symbols.join(" OR ");
         const query = `(${symbolQuery}) stock market`;
+        const allNews: any[] = [];
+        const seen = new Set<string>();
+        const addArticle = (article: any) => {
+          const key = article.url ?? article.headline ?? article.title;
+          if (!key || seen.has(key)) return;
+          seen.add(key);
+          allNews.push(article);
+        };
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayStartSeconds = Math.floor(todayStart.getTime() / 1000);
 
         if (ENV.newsApiKey) {
           try {
@@ -2741,15 +2753,16 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
             if (res.ok) {
               const data = await res.json() as { status: string; articles: any[] };
               if (data.status === "ok" && Array.isArray(data.articles)) {
-                return data.articles.slice(0, 15).map((a: any) => ({
-                  headline: a.title,
-                  summary: a.description ?? "",
-                  url: a.url,
-                  source: a.source?.name ?? "News",
-                  image: a.urlToImage ?? "",
-                  datetime: a.publishedAt ? Math.floor(new Date(a.publishedAt).getTime() / 1000) : 0,
-                  symbol: inferNewsSymbol(a, input.symbols),
-                }));
+                data.articles.slice(0, 20).forEach((a: any) => addArticle({
+                    headline: a.title,
+                    summary: a.description ?? "",
+                    url: a.url,
+                    source: a.source?.name ?? "News",
+                    image: a.urlToImage ?? "",
+                    datetime: a.publishedAt ? Math.floor(new Date(a.publishedAt).getTime() / 1000) : 0,
+                    symbol: inferNewsSymbol(a, symbols),
+                    provider: "NewsAPI",
+                  }));
               }
             }
           } catch {
@@ -2762,29 +2775,24 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
           const from = new Date(today);
           from.setDate(today.getDate() - 7);
           const fmt = (d: Date) => d.toISOString().split("T")[0];
-          const allNews: any[] = [];
-          const seen = new Set<string>();
           await Promise.allSettled(
-            input.symbols.slice(0, 5).map(async (sym) => {
+            symbols.slice(0, 5).map(async (sym) => {
               try {
                 const articles = await finnhubRequest("/company-news", { symbol: sym, from: fmt(from), to: fmt(today) }) as any[];
                 if (!Array.isArray(articles)) return;
                 for (const a of articles.slice(0, 6)) {
-                  const key = a.url ?? a.headline;
-                  if (!seen.has(key)) {
-                    seen.add(key);
-                    allNews.push({ ...a, symbol: sym });
-                  }
+                  addArticle({ ...a, symbol: sym, provider: "Finnhub" });
                 }
               } catch {
                 // skip
               }
             })
           );
-          return allNews.sort((a, b) => (b.datetime ?? 0) - (a.datetime ?? 0)).slice(0, 15);
         }
 
-        return [];
+        const sorted = allNews.sort((a, b) => (b.datetime ?? 0) - (a.datetime ?? 0));
+        const todayNews = sorted.filter((article) => (article.datetime ?? 0) >= todayStartSeconds);
+        return (todayNews.length > 0 ? todayNews : sorted).slice(0, 15);
       }),
 
     // Historical chart data for stock or crypto symbols
