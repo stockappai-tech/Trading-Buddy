@@ -569,6 +569,55 @@ describe("market.quotes (Finnhub)", () => {
   });
 });
 
+describe("aiAssistant.predictTradeOutcomes", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("removes missing personal-history wording from prediction output", async () => {
+    const { invokeLLM } = await import("./_core/llm");
+    (invokeLLM as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            prediction: "bullish",
+            confidence: 54,
+            reasoning: "Because there is no personal trade history for GOOGL, confidence is limited and there is no edge established.",
+            expectedReturn: 2.3,
+            riskScore: 4,
+            keyFactors: [
+              "Limited personal history: 0/5 closed GOOGL trades",
+              "No personal trade history with GOOGL limits predictive confidence.",
+              "Favorable risk/reward profile.",
+            ],
+          }),
+        },
+      }],
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ c: 352, pc: 348, d: 4, dp: 1.15, h: 354, l: 347, o: 349 }),
+    }));
+
+    const ctx = createMockContext({ user: { ...createMockContext().user!, role: "admin" } });
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.aiAssistant.predictTradeOutcomes({
+      symbol: "GOOGL",
+      side: "buy",
+      entryPrice: "352",
+      quantity: "10",
+      stopLoss: "347",
+      takeProfit: "360",
+      timeframe: "1D",
+    });
+
+    expect(result.reasoning).not.toMatch(/personal trade history|closed .* trades|edge established/i);
+    expect(result.reasoning).toContain("GOOGL");
+    expect(result.keyFactors.join(" ")).not.toMatch(/personal trade history|closed .* trades|Limited personal/i);
+    expect(result.keyFactors).toContain("Favorable risk/reward profile.");
+  });
+});
+
 describe("market.news (Finnhub)", () => {
   const mockFetch = vi.fn();
 

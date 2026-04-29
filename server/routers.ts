@@ -256,6 +256,37 @@ function sanitizeMarketSignalReasoning(symbol: string, reasoning: unknown, curre
   return text;
 }
 
+const personalHistoryLeakPattern = /\b(no historical|without trade history|historical\b.*\b(trade|personal|data)|personal\b.*\b(history|trade|data)|closed trades?|edge established|evidence of edge|expertise)\b/i;
+
+function sanitizePredictionReasoning(reasoning: unknown, symbol: string, side: string, currentPrice: number, riskReward: number | null) {
+  const text = typeof reasoning === "string" ? reasoning.trim() : "";
+  if (text && !personalHistoryLeakPattern.test(text)) return text;
+
+  const direction = side === "sell" || side === "short" ? "bearish" : "bullish";
+  const priceContext = currentPrice > 0 ? `${symbol} is trading near $${currentPrice.toFixed(2)}` : `${symbol} has limited live quote context right now`;
+  const rrContext = riskReward && Number.isFinite(riskReward)
+    ? `The planned risk/reward is about ${riskReward.toFixed(2)}:1, so the setup quality depends on clean execution around the entry, stop, and target.`
+    : "No complete stop/target structure was provided, so risk control is the main thing to tighten before taking the trade.";
+
+  return `${priceContext}. The setup leans ${direction} based on the proposed side and price structure. ${rrContext} Treat this as a market-setup read, not a guarantee: confirm the catalyst, volume, trend, and your daily plan before entering.`;
+}
+
+function sanitizePredictionFactors(factors: unknown[], symbol: string, riskReward: number | null) {
+  const cleaned = factors
+    .filter((factor): factor is string => typeof factor === "string" && factor.trim().length > 0)
+    .map((factor) => factor.trim())
+    .filter((factor) => !personalHistoryLeakPattern.test(factor));
+
+  if (cleaned.length > 0) return cleaned.slice(0, 6);
+
+  return [
+    `${symbol} setup should be judged from current price action, catalyst quality, and liquidity.`,
+    riskReward && Number.isFinite(riskReward) ? `Planned risk/reward is about ${riskReward.toFixed(2)}:1.` : "Add both a stop and target to make the risk/reward clear.",
+    "Stop placement must leave room for normal volatility while still protecting downside.",
+    "Confirm direction with volume, trend, and broader market conditions before entering.",
+  ];
+}
+
 const TRADIER_API_BASE = "https://api.tradier.com/v1";
 
 async function tradierRequest(token: string, path: string, method: string = "GET", body?: URLSearchParams | Record<string, string>) {
@@ -992,6 +1023,12 @@ export const appRouter = router({
         const winRate = symbolTrades.length > 0 ? wins.length / symbolTrades.length : 0;
         const avgWin = wins.length > 0 ? wins.reduce((sum, t) => sum + parseFloat(t.pnl ?? "0"), 0) / wins.length : 0;
         const avgLoss = losses.length > 0 ? losses.reduce((sum, t) => sum + parseFloat(t.pnl ?? "0"), 0) / losses.length : 0;
+        const entry = parseDecimal(input.entryPrice);
+        const stop = input.stopLoss ? parseDecimal(input.stopLoss) : 0;
+        const target = input.takeProfit ? parseDecimal(input.takeProfit) : 0;
+        const riskPerShare = stop > 0 ? Math.abs(entry - stop) : 0;
+        const rewardPerShare = target > 0 ? Math.abs(target - entry) : 0;
+        const riskReward = riskPerShare > 0 && rewardPerShare > 0 ? rewardPerShare / riskPerShare : null;
 
         // Get current market data
         let currentPrice = 0;
@@ -1009,13 +1046,13 @@ export const appRouter = router({
           messages: [
             {
               role: "system",
-              content: `You are an expert trading analyst. Analyze a proposed trade using the trader's history when available, plus current price context and risk/reward.
-If there are fewer than 5 closed trades for this symbol, do NOT refuse. Give a lower-confidence directional/risk read and clearly say personal-history confidence is limited.
+              content: `You are an expert trading analyst. Analyze a proposed trade using current market context, catalyst awareness, risk/reward, price location, volatility risk, and execution quality.
+If personal history is provided, you may use it quietly as one signal. Never mention missing personal trade history, closed-trade counts, lack of edge, or lack of expertise. Do not apologize for missing history. Give the trader useful market analysis immediately.
               
 Return a JSON analysis with:
 - prediction: "bullish", "bearish", or "neutral"
-- confidence: number 0-100 (percentage). Cap confidence at 55 when there are fewer than 5 closed trades.
-- reasoning: detailed explanation based on historical patterns
+- confidence: number 0-100 (percentage). Cap confidence at 60 when the setup lacks a clear catalyst or live market confirmation.
+- reasoning: detailed explanation based on setup quality, current price context, catalyst/sector context, and risk/reward
 - expectedReturn: expected percentage return
 - riskScore: risk level 1-10 (10 being highest risk)
 - keyFactors: array of strings describing what influenced the prediction`,
@@ -1035,9 +1072,9 @@ TRADE PROPOSAL:
 
 CURRENT MARKET:
 - Current Price: $${currentPrice.toFixed(2)}
+- Risk/Reward: ${riskReward ? `${riskReward.toFixed(2)}:1` : "not fully defined"}
 
-HISTORICAL PERFORMANCE (${symbolTrades.length} trades):
-- Personal history sample: ${hasEnoughPersonalHistory ? "enough for pattern analysis" : "limited; use lower confidence and focus on setup risk/reward"}
+${hasEnoughPersonalHistory ? `PERSONAL PERFORMANCE CONTEXT:
 - Win Rate: ${(winRate * 100).toFixed(1)}%
 - Average Win: $${avgWin.toFixed(2)}
 - Average Loss: $${avgLoss.toFixed(2)}
@@ -1046,7 +1083,7 @@ HISTORICAL PERFORMANCE (${symbolTrades.length} trades):
 RECENT TRADES:
 ${symbolTrades.slice(-10).map(t => 
   `${t.side} @$${t.entryPrice} → $${t.exitPrice || "open"} P&L:$${t.pnl || "N/A"}`
-).join("\n")}`,
+).join("\n")}` : "No personal performance context is included. Analyze the trade from market setup, price, risk/reward, and execution quality only. Do not mention missing history."}`,
             },
           ],
           response_format: {
@@ -1077,13 +1114,10 @@ ${symbolTrades.slice(-10).map(t =>
         return {
           prediction: result.prediction || "neutral",
           confidence: Math.min(hasEnoughPersonalHistory ? 100 : 55, Math.max(0, result.confidence || (hasEnoughPersonalHistory ? 50 : 35))),
-          reasoning: result.reasoning || "Analysis unavailable",
+          reasoning: sanitizePredictionReasoning(result.reasoning, input.symbol, input.side, currentPrice, riskReward),
           expectedReturn: result.expectedReturn || 0,
           riskScore: Math.min(10, Math.max(1, result.riskScore || 5)),
-          keyFactors: [
-            ...(!hasEnoughPersonalHistory ? [`Limited personal history: ${symbolTrades.length}/5 closed ${input.symbol} trades`] : []),
-            ...(Array.isArray(result.keyFactors) ? result.keyFactors : []),
-          ],
+          keyFactors: sanitizePredictionFactors(Array.isArray(result.keyFactors) ? result.keyFactors : [], input.symbol, riskReward),
         };
       }),
 
