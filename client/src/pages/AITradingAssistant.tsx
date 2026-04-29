@@ -22,6 +22,12 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 
+const asArray = <T,>(value: T[] | null | undefined): T[] => Array.isArray(value) ? value : [];
+const asNumber = (value: unknown, fallback = 0): number => {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+};
+
 export default function AITradingAssistant() {
   const [selectedSymbol, setSelectedSymbol] = useState("");
   const [tradeSide, setTradeSide] = useState<"buy" | "sell" | "short" | "cover">("buy");
@@ -101,6 +107,12 @@ export default function AITradingAssistant() {
     }
     portfolioOptimization.refetch();
   };
+
+  const predictionKeyFactors = asArray<string>(predictTrade.data?.keyFactors);
+  const sentimentItems = asArray(sentimentAnalysis.data);
+  const signalItems = asArray(tradeSignals.data);
+  const recommendedAllocations = asArray<any>(portfolioOptimization.data?.recommendedAllocations);
+  const rebalancingActions = asArray<string>(portfolioOptimization.data?.rebalancingActions);
 
   return (
     <DashboardLayout>
@@ -252,13 +264,13 @@ export default function AITradingAssistant() {
                         <div>
                           <Label className="text-sm font-medium">Expected Return</Label>
                           <p className="text-2xl font-bold">
-                            {predictTrade.data.expectedReturn >= 0 ? "+" : ""}
-                            {predictTrade.data.expectedReturn.toFixed(1)}%
+                            {asNumber(predictTrade.data.expectedReturn) >= 0 ? "+" : ""}
+                            {asNumber(predictTrade.data.expectedReturn).toFixed(1)}%
                           </p>
                         </div>
                         <div>
                           <Label className="text-sm font-medium">Risk Score</Label>
-                          <p className="text-2xl font-bold">{predictTrade.data.riskScore}/10</p>
+                          <p className="text-2xl font-bold">{asNumber(predictTrade.data.riskScore)}/10</p>
                         </div>
                       </div>
 
@@ -269,11 +281,11 @@ export default function AITradingAssistant() {
                         </p>
                       </div>
 
-                      {predictTrade.data.keyFactors.length > 0 && (
+                      {predictionKeyFactors.length > 0 && (
                         <div>
                           <Label className="text-sm font-medium">Key Factors</Label>
                           <div className="flex flex-wrap gap-2 mt-2">
-                            {predictTrade.data.keyFactors.map((factor: string, index: number) => (
+                            {predictionKeyFactors.map((factor: string, index: number) => (
                               <Badge key={index} variant="outline">
                                 {factor}
                               </Badge>
@@ -320,9 +332,11 @@ export default function AITradingAssistant() {
                   )}
                 </Button>
 
-                {sentimentAnalysis.data && sentimentAnalysis.data.length > 0 && (
+                {sentimentItems.length > 0 && (
                   <div className="grid gap-4 mt-6">
-                    {sentimentAnalysis.data.map((analysis) => (
+                    {sentimentItems.map((analysis) => {
+                      const keyThemes = asArray<string>(analysis.keyThemes);
+                      return (
                       <Card key={analysis.symbol}>
                         <CardHeader>
                           <CardTitle className="flex items-center justify-between">
@@ -346,11 +360,11 @@ export default function AITradingAssistant() {
                           <p className="text-sm text-muted-foreground mb-3">
                             {analysis.summary}
                           </p>
-                          {analysis.keyThemes.length > 0 && (
+                          {keyThemes.length > 0 && (
                             <div>
                               <Label className="text-sm font-medium">Key Themes</Label>
                               <div className="flex flex-wrap gap-2 mt-2">
-                                {analysis.keyThemes.map((theme: string, index: number) => (
+                                {keyThemes.map((theme: string, index: number) => (
                                   <Badge key={index} variant="outline" className="text-xs">
                                     {theme}
                                   </Badge>
@@ -360,7 +374,7 @@ export default function AITradingAssistant() {
                           )}
                         </CardContent>
                       </Card>
-                    ))}
+                    );})}
                   </div>
                 )}
               </CardContent>
@@ -399,9 +413,9 @@ export default function AITradingAssistant() {
                   )}
                 </Button>
 
-                {tradeSignals.data && tradeSignals.data.length > 0 && (
+                {signalItems.length > 0 && (
                   <div className="grid gap-4 mt-6">
-                    {tradeSignals.data.map((signal) => (
+                    {signalItems.map((signal) => (
                       <Card key={signal.symbol}>
                         <CardHeader>
                           <CardTitle className="flex items-center justify-between">
@@ -433,7 +447,7 @@ export default function AITradingAssistant() {
                             </div>
                             <div>
                               <Label className="font-medium">Current Price</Label>
-                              <p>${signal.currentPrice.toFixed(2)}</p>
+                              <p>${asNumber(signal.currentPrice).toFixed(2)}</p>
                             </div>
                             <div>
                               <Label className="font-medium">Stop Loss</Label>
@@ -451,8 +465,8 @@ export default function AITradingAssistant() {
                             </span>
                             <span>
                               <Label className="font-medium">Change:</Label>{" "}
-                              <span className={signal.changePercent >= 0 ? "text-green-600" : "text-red-600"}>
-                                {signal.changePercent >= 0 ? "+" : ""}{signal.changePercent.toFixed(2)}%
+                              <span className={asNumber(signal.changePercent) >= 0 ? "text-green-600" : "text-red-600"}>
+                                {asNumber(signal.changePercent) >= 0 ? "+" : ""}{asNumber(signal.changePercent).toFixed(2)}%
                               </span>
                             </span>
                           </div>
@@ -527,7 +541,7 @@ export default function AITradingAssistant() {
                     <div className="grid grid-cols-3 gap-4">
                       <Card>
                         <CardContent className="pt-6">
-                          <div className="text-2xl font-bold">{portfolioOptimization.data.diversificationScore}/10</div>
+                          <div className="text-2xl font-bold">{asNumber(portfolioOptimization.data.diversificationScore)}/10</div>
                           <p className="text-xs text-muted-foreground">Diversification Score</p>
                         </CardContent>
                       </Card>
@@ -539,29 +553,29 @@ export default function AITradingAssistant() {
                       </Card>
                       <Card>
                         <CardContent className="pt-6">
-                          <div className="text-2xl font-bold">${portfolioOptimization.data.riskPerTrade.toFixed(2)}</div>
+                          <div className="text-2xl font-bold">${asNumber(portfolioOptimization.data.riskPerTrade).toFixed(2)}</div>
                           <p className="text-xs text-muted-foreground">Risk per Trade</p>
                         </CardContent>
                       </Card>
                     </div>
 
-                    {portfolioOptimization.data.recommendedAllocations.length > 0 && (
+                    {recommendedAllocations.length > 0 && (
                       <Card>
                         <CardHeader>
                           <CardTitle>Recommended Allocations</CardTitle>
                         </CardHeader>
                         <CardContent>
                           <div className="space-y-4">
-                            {portfolioOptimization.data.recommendedAllocations.map((alloc: any) => (
+                            {recommendedAllocations.map((alloc: any) => (
                               <div key={alloc.symbol} className="flex items-center justify-between p-3 border rounded">
                                 <div>
                                   <div className="font-medium">{alloc.symbol}</div>
                                   <div className="text-sm text-muted-foreground">{alloc.reasoning}</div>
                                 </div>
                                 <div className="text-right">
-                                  <div className="font-medium">{alloc.allocationPercent.toFixed(1)}%</div>
+                                  <div className="font-medium">{asNumber(alloc.allocationPercent).toFixed(1)}%</div>
                                   <div className="text-sm text-muted-foreground">
-                                    ${alloc.positionSize.toFixed(2)}
+                                    ${asNumber(alloc.positionSize).toFixed(2)}
                                   </div>
                                 </div>
                               </div>
@@ -571,14 +585,14 @@ export default function AITradingAssistant() {
                       </Card>
                     )}
 
-                    {portfolioOptimization.data.rebalancingActions.length > 0 && (
+                    {rebalancingActions.length > 0 && (
                       <Card>
                         <CardHeader>
                           <CardTitle>Rebalancing Actions</CardTitle>
                         </CardHeader>
                         <CardContent>
                           <ul className="space-y-2">
-                            {portfolioOptimization.data.rebalancingActions.map((action: string, index: number) => (
+                            {rebalancingActions.map((action: string, index: number) => (
                               <li key={index} className="flex items-start gap-2">
                                 <AlertTriangle className="h-4 w-4 mt-0.5 text-yellow-500" />
                                 <span className="text-sm">{action}</span>
