@@ -325,7 +325,7 @@ export default function Sessions() {
                     else timeLabel = new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
                   }
                   // Live price for article's symbol
-                  const articleSym = item.symbol;
+                  const articleSym = typeof item.symbol === "string" ? item.symbol.toUpperCase() : "";
                   const q = articleSym ? quoteMap[articleSym] : null;
                   return (
                     <Card key={i} className="bg-card border-border hover:border-primary/30 transition-colors">

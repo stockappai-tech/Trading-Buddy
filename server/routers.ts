@@ -407,6 +407,16 @@ async function fetchPredictionLiveContext(symbol: string) {
   };
 }
 
+function inferNewsSymbol(article: { title?: string; headline?: string; description?: string; summary?: string; related?: string }, symbols: string[]) {
+  const normalizedSymbols = symbols.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean);
+  const related = typeof article.related === "string" ? article.related.toUpperCase() : "";
+  const relatedMatch = normalizedSymbols.find((symbol) => related.split(/[,\s]+/).includes(symbol));
+  if (relatedMatch) return relatedMatch;
+
+  const text = `${article.title ?? article.headline ?? ""} ${article.description ?? article.summary ?? ""}`.toUpperCase();
+  return normalizedSymbols.find((symbol) => new RegExp(`(^|[^A-Z0-9])${symbol}([^A-Z0-9]|$)`).test(text)) ?? "";
+}
+
 const TRADIER_API_BASE = "https://api.tradier.com/v1";
 
 async function tradierRequest(token: string, path: string, method: string = "GET", body?: URLSearchParams | Record<string, string>) {
@@ -2704,7 +2714,7 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
                   source: a.source?.name ?? "News",
                   image: a.urlToImage ?? "",
                   datetime: a.publishedAt ? Math.floor(new Date(a.publishedAt).getTime() / 1000) : 0,
-                  symbol: input.symbols[0] ?? "",
+                  symbol: inferNewsSymbol(a, input.symbols),
                 }));
               }
             }

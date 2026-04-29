@@ -530,6 +530,7 @@ describe("market.quotes (Finnhub)", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     delete process.env.FINNHUB_API_KEY;
+    delete process.env.NEWS_API_KEY;
   });
 
   it("returns parsed quotes for valid symbols", async () => {
@@ -628,6 +629,7 @@ describe("market.news (Finnhub)", () => {
   const mockFetch = vi.fn();
 
   beforeEach(() => {
+    mockFetch.mockReset();
     vi.stubGlobal("fetch", mockFetch);
     process.env.FINNHUB_API_KEY = "test-finnhub-key";
   });
@@ -656,5 +658,48 @@ describe("market.news (Finnhub)", () => {
     expect(Array.isArray(result)).toBe(true);
     expect(result.length).toBeGreaterThan(0);
     expect((result[0] as any).headline).toBe("AAPL hits record high");
+  });
+
+  it("tags NewsAPI articles with the matching article symbol instead of the first watchlist symbol", async () => {
+    const { ENV } = await import("./_core/env");
+    const originalNewsApiKey = ENV.newsApiKey;
+    (ENV as any).newsApiKey = "test-news-api-key";
+    process.env.NEWS_API_KEY = "test-news-api-key";
+    try {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          status: "ok",
+          articles: [
+            {
+              title: "Microsoft reports strong Azure demand",
+              description: "MSFT shares rise as cloud revenue beats expectations.",
+              url: "https://example.com/msft",
+              source: { name: "Example News" },
+              urlToImage: "",
+              publishedAt: "2026-04-29T14:00:00Z",
+            },
+            {
+              title: "Market opens higher before Fed decision",
+              description: "Major indexes moved up in morning trading.",
+              url: "https://example.com/market",
+              source: { name: "Example News" },
+              urlToImage: "",
+              publishedAt: "2026-04-29T13:00:00Z",
+            },
+          ],
+        }),
+      });
+
+      const ctx = createMockContext();
+      const caller = appRouter.createCaller(ctx);
+      const result = await caller.market.news({ symbols: ["TSLA", "MSFT"] });
+
+      expect((result[0] as any).symbol).toBe("MSFT");
+      expect((result[1] as any).symbol).toBe("");
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      (ENV as any).newsApiKey = originalNewsApiKey;
+    }
   });
 });
