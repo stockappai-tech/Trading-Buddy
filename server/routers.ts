@@ -2289,7 +2289,7 @@ Return JSON with: { score: number (1-10), feedback: string (2-3 sentences, direc
           stopLoss: z.string().nullable().optional(),
           notes: z.string().nullable().optional(),
         })).optional(),
-        // Live market prices for auto-filling exit price when closing at market
+        // Live market prices for auto-filling entry/exit price when the trader says market/current.
         liveQuotes: z.record(z.string(), z.number()).optional(),
       }))
       .mutation(async ({ input }) => {
@@ -2319,6 +2319,7 @@ Return a JSON array of trades. Each trade should have:
 - status ("open" if still holding, "closed" if exited)
 - notes (any relevant context)
 IMPORTANT: When the trader says they are "closing", "selling", "exiting", or "covering" a position, match it to the open positions context to fill in entryPrice, quantity, takeProfit, takeProfit2, and stopLoss automatically.
+IMPORTANT: When opening a new trade and the trader says "market", "market price", "current", or "current price", set entryPrice to "market" if no exact entry price is known. The server will replace it with the live quote when available.
 IMPORTANT: If the trader says "TP1", "first target", or "first take profit", put that in takeProfit. If they say "TP2", "second target", or "runner target", put that in takeProfit2.
 IMPORTANT: Speech-to-text often misplaces decimal points. If the entry price is around $150 and the exit price sounds like $1.72 or $1720, the correct value is almost certainly $172. Always sanity-check prices — exit, TP, and SL should be in the same order of magnitude as the entry price (within 50%). If a price seems off by a factor of 10, 100, or 0.1, correct it before returning.
 If no clear trades are mentioned, return an empty array [].
@@ -2380,6 +2381,7 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
 
         const closeIntent = /\b(close|closing|closed|sell|selling|sold|exit|exiting|cover|covering)\b/i.test(correctedTranscript);
         const restIntent = /\b(rest|remaining|remainder|all|everything|full|entire)\b/i.test(correctedTranscript);
+        const marketEntryIntent = /\b(market|market price|current|current price)\b/i.test(correctedTranscript);
         const openPositions = input.openPositions ?? [];
         const findMatchingOpen = (trade: any) => {
           const symbol = typeof trade.symbol === "string" ? trade.symbol.toUpperCase() : "";
@@ -2419,6 +2421,17 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
             const livePrice = matchingOpen ? input.liveQuotes[matchingOpen.symbol.toUpperCase()] : undefined;
             if (isClose && hasNoExit && matchingOpen && livePrice && livePrice > 0) {
               applyMarketClose(trade, matchingOpen, livePrice);
+            }
+
+            const symbol = typeof trade.symbol === "string" ? trade.symbol.toUpperCase() : "";
+            const liveEntryPrice = symbol ? input.liveQuotes[symbol] : undefined;
+            const entryText = typeof trade.entryPrice === "string" ? trade.entryPrice.trim().toLowerCase() : "";
+            const missingOrMarketEntry = !entryText || entryText === "null" || entryText === "market" || entryText === "market price" || entryText === "current" || entryText === "current price" || Number(entryText) <= 0;
+            if (!isClose && marketEntryIntent && missingOrMarketEntry && liveEntryPrice && liveEntryPrice > 0) {
+              trade.symbol = symbol;
+              trade.entryPrice = liveEntryPrice.toFixed(2);
+              trade.status = trade.status === "closed" ? "closed" : "open";
+              trade.notes = trade.notes ? `${trade.notes} | Entry filled at live market price` : "Entry filled at live market price";
             }
           }
 

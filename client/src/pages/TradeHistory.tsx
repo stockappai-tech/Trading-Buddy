@@ -89,20 +89,23 @@ export default function TradeHistory() {
   const closedCount = useMemo(() => filtered.filter((t) => t.status === "closed").length, [filtered]);
 
   const handleSubmit = () => {
-    if (!form.symbol || !form.quantity || !form.entryPrice) {
-      toast.error("Symbol, quantity, and entry price are required");
+    const entryPrice = form.entryPrice.trim().toLowerCase() === "market" || form.entryPrice.trim().toLowerCase() === "market price" || form.entryPrice.trim().toLowerCase() === "current"
+      ? liveQuote?.last.toFixed(2) ?? ""
+      : form.entryPrice;
+    if (!form.symbol || !form.quantity || !entryPrice) {
+      toast.error(liveQuote ? "Symbol, quantity, and entry price are required" : "Symbol, quantity, and entry price are required. Type a price or wait for the live quote.");
       return;
     }
     // Auto-calculate PnL if exit price provided
     let pnl = form.pnl;
     if (form.exitPrice && !form.pnl) {
       const qty = parseFloat(form.quantity);
-      const entry = parseFloat(form.entryPrice);
+      const entry = parseFloat(entryPrice);
       const exit = parseFloat(form.exitPrice);
       const calc = form.side === "short" ? (entry - exit) * qty : (exit - entry) * qty;
       pnl = calc.toFixed(2);
     }
-    createTrade.mutate({ ...form, symbol: form.symbol.toUpperCase(), pnl: pnl || undefined, exitPrice: form.exitPrice || undefined });
+    createTrade.mutate({ ...form, symbol: form.symbol.toUpperCase(), entryPrice, pnl: pnl || undefined, exitPrice: form.exitPrice || undefined });
   };
 
   const exportCsv = () => {
@@ -397,7 +400,7 @@ export default function TradeHistory() {
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Entry Price *</label>
-                <Input type="number" value={form.entryPrice} onChange={(e) => setForm({ ...form, entryPrice: e.target.value })} placeholder="150.00" className="bg-input border-border h-8 text-sm" />
+                <Input value={form.entryPrice} onChange={(e) => setForm({ ...form, entryPrice: e.target.value })} placeholder="150.00 or market" className="bg-input border-border h-8 text-sm" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">

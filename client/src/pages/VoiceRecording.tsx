@@ -393,10 +393,12 @@ export default function VoiceRecording() {
 
       // Get live price for this symbol (from Finnhub quotes) to anchor magnitude correction
       const livePrice = liveQuotes?.[t.symbol.toUpperCase()];
+      const entryText = String(t.entryPrice ?? "").trim().toLowerCase();
+      const marketEntry = ["", "null", "market", "market price", "current", "current price"].includes(entryText);
 
       // Sanity-check the entry price itself against live market price
       // e.g. user says "Apple at 253", AI extracts "2.53" → correct to "253.00"
-      const entrySane = livePrice ? sanitizePrice(entryNorm, parseFloat(entryNorm), livePrice) : entryNorm;
+      const entrySane = livePrice && marketEntry ? livePrice.toFixed(2) : livePrice ? sanitizePrice(entryNorm, parseFloat(entryNorm), livePrice) : entryNorm;
       const entry = parseFloat(entrySane);
       const isShort = t.side === "short" || t.side === "cover";
 

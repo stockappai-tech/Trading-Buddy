@@ -194,6 +194,50 @@ describe("sessions.extractTrades", () => {
     });
     expect(result.trades[0].pnl).toBe("312.50");
   });
+
+  it("fills a new long entry at live market price when market entry is spoken", async () => {
+    const { invokeLLM } = await import("./_core/llm");
+    (invokeLLM as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            trades: [{
+              symbol: "AAPL",
+              side: "buy",
+              quantity: "24",
+              entryPrice: "market",
+              exitPrice: null,
+              pnl: null,
+              takeProfit: "214",
+              takeProfit2: null,
+              stopLoss: "208",
+              status: "open",
+              notes: null,
+            }],
+          }),
+        },
+      }],
+    });
+
+    const ctx = createMockContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.sessions.extractTrades({
+      transcript: "Long AAPL at market price, SL 208, TP 214, 24 shares",
+      openPositions: [],
+      liveQuotes: { AAPL: 211.42 },
+    });
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0]).toMatchObject({
+      symbol: "AAPL",
+      side: "buy",
+      quantity: "24",
+      entryPrice: "211.42",
+      takeProfit: "214",
+      stopLoss: "208",
+      status: "open",
+    });
+  });
 });
 
 describe("aiAssistant.getTradeSignals", () => {
