@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { REALTIME_INTERVALS } from "@/lib/realtime";
 import { trpc } from "@/lib/trpc";
 import { BarChart3, Crown, Lock, TrendingDown, TrendingUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -44,11 +45,11 @@ export default function Analytics() {
   const [, navigate] = useLocation();
   const { from, to } = useMemo(() => getPeriodDates(period), [period]);
 
-  const { data: prefs } = trpc.preferences.get.useQuery();
-  const { data: summary } = trpc.analytics.summary.useQuery({ from, to });
-  const { data: symbolData } = trpc.analytics.symbolPerformance.useQuery({ from, to });
-  const { data: timeData } = trpc.analytics.timeOfDay.useQuery({ from, to });
-  const { data: pnlData } = trpc.analytics.pnlByPeriod.useQuery({ from, to });
+  const { data: prefs } = trpc.preferences.get.useQuery(undefined, { refetchInterval: REALTIME_INTERVALS.account });
+  const { data: summary } = trpc.analytics.summary.useQuery({ from, to }, { refetchInterval: REALTIME_INTERVALS.analytics });
+  const { data: symbolData } = trpc.analytics.symbolPerformance.useQuery({ from, to }, { refetchInterval: REALTIME_INTERVALS.analytics });
+  const { data: timeData } = trpc.analytics.timeOfDay.useQuery({ from, to }, { refetchInterval: REALTIME_INTERVALS.analytics });
+  const { data: pnlData } = trpc.analytics.pnlByPeriod.useQuery({ from, to }, { refetchInterval: REALTIME_INTERVALS.analytics });
   const [accountSize, setAccountSize] = useState("10000");
   const [riskTolerance, setRiskTolerance] = useState<"conservative" | "moderate" | "aggressive">("moderate");
 
@@ -60,14 +61,14 @@ export default function Analytics() {
 
   const { data: sizingData } = trpc.analytics.positionSizing.useQuery(
     { accountSize, riskTolerance },
-    { enabled: Boolean(accountSize) }
+    { enabled: Boolean(accountSize), refetchInterval: REALTIME_INTERVALS.analytics }
   );
-  const { data: heatmapData } = trpc.analytics.portfolioHeatMap.useQuery();
+  const { data: heatmapData } = trpc.analytics.portfolioHeatMap.useQuery(undefined, { refetchInterval: REALTIME_INTERVALS.analytics });
   const { data: stressData } = trpc.analytics.stressTest.useQuery(
     { accountSize, simulations: 500, tradesToSimulate: 50, from, to },
-    { enabled: Boolean(from && to) }
+    { enabled: Boolean(from && to), refetchInterval: REALTIME_INTERVALS.analytics }
   );
-  const { data: correlationData } = trpc.analytics.correlationMatrix.useQuery({ from, to });
+  const { data: correlationData } = trpc.analytics.correlationMatrix.useQuery({ from, to }, { refetchInterval: REALTIME_INTERVALS.analytics });
 
   const isPremium = prefs?.isPremium || false;
 

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { REALTIME_INTERVALS } from "@/lib/realtime";
 import { trpc } from "@/lib/trpc";
 import { Check, Loader2, Mic, MicOff, Save, Sparkles, Square, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -52,13 +53,13 @@ export default function VoiceRecording() {
   const generateSummary = trpc.sessions.generateSummary.useMutation();
 
   // Fetch open positions to give AI context when closing trades
-  const { data: openTradesData } = trpc.trades.openTrades.useQuery();
+  const { data: openTradesData } = trpc.trades.openTrades.useQuery(undefined, { refetchInterval: REALTIME_INTERVALS.quote });
 
   // Fetch live Finnhub quotes for all extracted symbols to anchor price magnitude correction
   const [extractedSymbols, setExtractedSymbols] = useState<string>("");
   const { data: liveQuotesData } = trpc.market.quotes.useQuery(
     { symbols: extractedSymbols },
-    { enabled: !!extractedSymbols }
+    { enabled: !!extractedSymbols, refetchInterval: REALTIME_INTERVALS.quote }
   );
   // Build a symbol -> last price map for sanitizePrice
   const liveQuoteMap: Record<string, number> = {};

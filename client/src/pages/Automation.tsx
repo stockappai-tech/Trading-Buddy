@@ -5,9 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { REALTIME_INTERVALS } from "@/lib/realtime";
 import { trpc } from "@/lib/trpc";
 import { Zap, CheckCircle2, CalendarDays, Shield, TrendingUp, TrendingDown, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 export default function Automation() {
@@ -19,9 +20,16 @@ export default function Automation() {
   const [stopPrice, setStopPrice] = useState("");
   const [duration, setDuration] = useState<"day" | "gtc">("day");
 
-  const connection = trpc.broker.getConnection.useQuery();
+  const normalizedSymbol = useMemo(() => symbol.trim().toUpperCase(), [symbol]);
+
+  const connection = trpc.broker.getConnection.useQuery(undefined, { refetchInterval: REALTIME_INTERVALS.account });
   const validateConnection = trpc.broker.validateConnection.useQuery(undefined, { enabled: false });
-  const calendar = trpc.broker.fetchEconomicCalendar.useQuery();
+  const calendar = trpc.broker.fetchEconomicCalendar.useQuery(undefined, { refetchInterval: REALTIME_INTERVALS.calendar });
+  const liveQuote = trpc.market.quotes.useQuery(
+    { symbols: normalizedSymbol },
+    { enabled: normalizedSymbol.length > 0, refetchInterval: REALTIME_INTERVALS.quote }
+  );
+  const currentQuote = liveQuote.data?.[0];
 
   const placeOrder = trpc.broker.placeOrder.useMutation({
     onSuccess: () => toast.success("Order sent to Tradier"),
@@ -42,7 +50,7 @@ export default function Automation() {
       toast.error("Limit orders require a price");
       return;
     }
-    placeOrder.mutate({ symbol: symbol.toUpperCase(), side, quantity, orderType, price: price || undefined, stopPrice: stopPrice || undefined, duration });
+    placeOrder.mutate({ symbol: normalizedSymbol, side, quantity, orderType, price: price || undefined, stopPrice: stopPrice || undefined, duration });
   };
 
   const handleExecuteSignal = () => {
@@ -50,7 +58,7 @@ export default function Automation() {
       toast.error("Symbol is required to execute a signal order");
       return;
     }
-    executeSignalOrder.mutate({ symbol: symbol.toUpperCase() });
+    executeSignalOrder.mutate({ symbol: normalizedSymbol });
   };
 
   return (
@@ -194,6 +202,37 @@ export default function Automation() {
                 <Input id="auto-stop" placeholder="145.00" value={stopPrice} onChange={(e) => setStopPrice(e.target.value)} />
               </div>
             </div>
+            {normalizedSymbol && (
+              <div className="rounded-xl border border-border bg-muted/10 p-3">
+                {currentQuote ? (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Live {currentQuote.symbol} quote</p>
+                      <p className="text-lg font-bold text-foreground">
+                        ${currentQuote.last.toFixed(2)}
+                        <span className={currentQuote.change >= 0 ? "ml-2 text-sm text-emerald-500" : "ml-2 text-sm text-destructive"}>
+                          {currentQuote.change >= 0 ? "+" : ""}{currentQuote.change.toFixed(2)} ({currentQuote.changePercent >= 0 ? "+" : ""}{currentQuote.changePercent.toFixed(2)}%)
+                        </span>
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {orderType === "limit" && (
+                        <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => setPrice(currentQuote.last.toFixed(2))}>
+                          Use Live Limit
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => liveQuote.refetch()}>
+                        <RefreshCw className="mr-2 h-3 w-3" /> Refresh Quote
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    {liveQuote.isError ? `Live quote unavailable: ${liveQuote.error.message}` : `Loading live quote for ${normalizedSymbol}...`}
+                  </p>
+                )}
+              </div>
+            )}
             <div className="flex flex-wrap gap-3 items-center">
               <Button onClick={handlePlaceOrder} disabled={placeOrder.isPending} className="bg-primary text-primary-foreground h-9 text-xs">
                 {placeOrder.isPending ? (

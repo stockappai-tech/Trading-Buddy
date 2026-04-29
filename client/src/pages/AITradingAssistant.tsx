@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { REALTIME_INTERVALS } from "@/lib/realtime";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import {
@@ -19,7 +20,7 @@ import {
   RefreshCw,
   Crown,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 const asArray = <T,>(value: T[] | null | undefined): T[] => Array.isArray(value) ? value : [];
@@ -40,11 +41,18 @@ export default function AITradingAssistant() {
   const [portfolioSymbols, setPortfolioSymbols] = useState<string[]>([]);
   const [accountSize, setAccountSize] = useState("10000");
   const [riskTolerance, setRiskTolerance] = useState<"conservative" | "moderate" | "aggressive">("moderate");
+  const normalizedSelectedSymbol = useMemo(() => selectedSymbol.trim().toUpperCase(), [selectedSymbol]);
 
   // API calls
+  const selectedQuote = trpc.market.quotes.useQuery(
+    { symbols: normalizedSelectedSymbol },
+    { enabled: normalizedSelectedSymbol.length > 0, refetchInterval: REALTIME_INTERVALS.quote }
+  );
+  const liveQuote = selectedQuote.data?.[0];
+
   const predictTrade = trpc.aiAssistant.predictTradeOutcomes.useQuery(
     {
-      symbol: selectedSymbol,
+      symbol: normalizedSelectedSymbol,
       side: tradeSide,
       entryPrice,
       quantity,
@@ -77,7 +85,7 @@ export default function AITradingAssistant() {
   );
 
   const handlePredictTrade = async () => {
-    if (!selectedSymbol || !entryPrice || !quantity) {
+    if (!normalizedSelectedSymbol || !entryPrice || !quantity) {
       toast.error("Please fill in symbol, entry price, and quantity");
       return;
     }
@@ -231,6 +239,36 @@ export default function AITradingAssistant() {
                     </Select>
                   </div>
                 </div>
+
+                {normalizedSelectedSymbol && (
+                  <div className="rounded-xl border border-border bg-muted/10 p-3">
+                    {liveQuote ? (
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Live {liveQuote.symbol} quote for this prediction</p>
+                          <p className="text-lg font-bold text-foreground">
+                            ${liveQuote.last.toFixed(2)}
+                            <span className={liveQuote.change >= 0 ? "ml-2 text-sm text-emerald-500" : "ml-2 text-sm text-destructive"}>
+                              {liveQuote.change >= 0 ? "+" : ""}{liveQuote.change.toFixed(2)} ({liveQuote.changePercent >= 0 ? "+" : ""}{liveQuote.changePercent.toFixed(2)}%)
+                            </span>
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button size="sm" variant="secondary" className="h-8 text-xs" onClick={() => setEntryPrice(liveQuote.last.toFixed(2))}>
+                            Use Live Entry
+                          </Button>
+                          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => selectedQuote.refetch()}>
+                            <RefreshCw className="mr-2 h-3 w-3" /> Refresh Quote
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        {selectedQuote.isError ? `Live quote unavailable: ${selectedQuote.error.message}` : `Loading live quote for ${normalizedSelectedSymbol}...`}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <Button onClick={handlePredictTrade} disabled={predictTrade.isFetching}>
                   {predictTrade.isFetching ? (

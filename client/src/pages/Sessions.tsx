@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
+import { REALTIME_INTERVALS } from "@/lib/realtime";
 import { Bot, BookmarkPlus, Download, ExternalLink, FileText, Heart, Mic, Newspaper, Star, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -53,9 +54,9 @@ export default function Sessions() {
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
 
-  const { data: sessions, isLoading: sessionsLoading } = trpc.sessions.list.useQuery();
-  const { data: watchlistItems, isLoading: watchlistLoading } = trpc.watchlist.list.useQuery();
-  const { data: allTrades } = trpc.trades.list.useQuery({});
+  const { data: sessions, isLoading: sessionsLoading } = trpc.sessions.list.useQuery(undefined, { refetchInterval: REALTIME_INTERVALS.dashboard });
+  const { data: watchlistItems, isLoading: watchlistLoading } = trpc.watchlist.list.useQuery(undefined, { refetchInterval: REALTIME_INTERVALS.account });
+  const { data: allTrades } = trpc.trades.list.useQuery({}, { refetchInterval: REALTIME_INTERVALS.dashboard });
   const exportMutation = trpc.export.sessionPdf.useMutation();
 
   const addToWatchlist = trpc.watchlist.add.useMutation({
@@ -89,13 +90,13 @@ export default function Sessions() {
 
   const { data: news, isLoading: newsLoading } = trpc.market.news.useQuery(
     { symbols: watchlistSymbols },
-    { enabled: watchlistSymbols.length > 0, refetchInterval: 5 * 60 * 1000 }
+    { enabled: watchlistSymbols.length > 0, refetchInterval: REALTIME_INTERVALS.news }
   );
 
   // Live quotes for watchlist symbols
   const { data: watchlistQuotes } = trpc.market.quotes.useQuery(
     { symbols: watchlistSymbols.join(",") },
-    { enabled: watchlistSymbols.length > 0, refetchInterval: 30000 }
+    { enabled: watchlistSymbols.length > 0, refetchInterval: REALTIME_INTERVALS.quote }
   );
   const quoteMap = useMemo(() => {
     const m: Record<string, { last: number; changePercent: number }> = {};

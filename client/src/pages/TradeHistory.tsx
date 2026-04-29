@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { REALTIME_INTERVALS } from "@/lib/realtime";
 import { trpc } from "@/lib/trpc";
 import { format } from "date-fns";
 import { Brain, Download, Filter, Plus, Search, Trash2, X } from "lucide-react";
@@ -35,11 +36,11 @@ export default function TradeHistory() {
   });
 
   const utils = trpc.useUtils();
-  const { data: trades, isLoading } = trpc.trades.list.useQuery({ limit: 500 });
+  const { data: trades, isLoading } = trpc.trades.list.useQuery({ limit: 500 }, { refetchInterval: REALTIME_INTERVALS.dashboard });
   const quoteSymbol = form.symbol.trim().toUpperCase();
   const { data: liveQuoteData, refetch: refetchLiveQuote } = trpc.market.quotes.useQuery(
     { symbols: quoteSymbol },
-    { enabled: showAddDialog && quoteSymbol.length > 0, refetchInterval: 10000 }
+    { enabled: showAddDialog && quoteSymbol.length > 0, refetchInterval: REALTIME_INTERVALS.quote }
   );
   const liveQuote = liveQuoteData?.[0];
 

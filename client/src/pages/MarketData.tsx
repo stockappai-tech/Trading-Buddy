@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { REALTIME_INTERVALS } from "@/lib/realtime";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -71,12 +72,12 @@ export default function MarketData() {
 
   const stockQuotes = trpc.market.quotes.useQuery(
     { symbols: symbol.toUpperCase() },
-    { enabled: Boolean(symbol) && assetType === "stock", refetchInterval: 10000 }
+    { enabled: Boolean(symbol) && assetType === "stock", refetchInterval: REALTIME_INTERVALS.quote }
   );
 
   const cryptoQuotes = trpc.market.cryptoQuotes.useQuery(
     { symbols: assetType === "crypto" ? [symbol] : [] },
-    { enabled: Boolean(symbol) && assetType === "crypto", refetchInterval: 10000 }
+    { enabled: Boolean(symbol) && assetType === "crypto", refetchInterval: REALTIME_INTERVALS.quote }
   );
 
   useEffect(() => {

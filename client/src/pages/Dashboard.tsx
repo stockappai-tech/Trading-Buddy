@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import { REALTIME_INTERVALS } from "@/lib/realtime";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -57,11 +58,11 @@ export default function Dashboard() {
   const [, navigate] = useLocation();
   const { from, to } = useMemo(() => getPeriodDates(period), [period]);
 
-  const { data: summary, isLoading: summaryLoading } = trpc.analytics.summary.useQuery({ from, to });
-  const { data: pnlData, isLoading: pnlLoading } = trpc.analytics.pnlByPeriod.useQuery({ from, to });
-  const { data: openTrades } = trpc.trades.openTrades.useQuery();
-  const { data: prefs } = trpc.preferences.get.useQuery();
-  const { data: recentTrades } = trpc.trades.list.useQuery({ limit: 5 });
+  const { data: summary, isLoading: summaryLoading } = trpc.analytics.summary.useQuery({ from, to }, { refetchInterval: REALTIME_INTERVALS.dashboard });
+  const { data: pnlData, isLoading: pnlLoading } = trpc.analytics.pnlByPeriod.useQuery({ from, to }, { refetchInterval: REALTIME_INTERVALS.dashboard });
+  const { data: openTrades } = trpc.trades.openTrades.useQuery(undefined, { refetchInterval: REALTIME_INTERVALS.quote });
+  const { data: prefs } = trpc.preferences.get.useQuery(undefined, { refetchInterval: REALTIME_INTERVALS.account });
+  const { data: recentTrades } = trpc.trades.list.useQuery({ limit: 5 }, { refetchInterval: REALTIME_INTERVALS.dashboard });
   const utils = trpc.useUtils();
   const fixOrphaned = trpc.trades.fixOrphaned.useMutation({
     onSuccess: (data) => {
@@ -96,7 +97,7 @@ export default function Dashboard() {
 
   const { data: quotes, refetch: refetchQuotes } = trpc.market.quotes.useQuery(
     { symbols },
-    { enabled: !!symbols, refetchInterval: 30000 }
+    { enabled: !!symbols, refetchInterval: REALTIME_INTERVALS.quote }
   );
 
   // Calculate cumulative PnL for chart
@@ -132,14 +133,15 @@ export default function Dashboard() {
   const isProfitable = totalPnl >= 0;
 
   // ─── Streak calculation (days with at least 1 closed trade) ───────────────
-  const { data: allTrades } = trpc.trades.list.useQuery({});
+  const { data: allTrades } = trpc.trades.list.useQuery({}, { refetchInterval: REALTIME_INTERVALS.dashboard });
 
   // ─── Weekly Report (last 7 days vs prior 7 days) ──────────────────────────
   const thisWeekFrom = useMemo(() => { const d = new Date(); d.setDate(d.getDate() - 7); return d; }, []);
   const prevWeekFrom = useMemo(() => { const d = new Date(); d.setDate(d.getDate() - 14); return d; }, []);
   const prevWeekTo = useMemo(() => { const d = new Date(); d.setDate(d.getDate() - 7); return d; }, []);
-  const { data: thisWeekSummary } = trpc.analytics.summary.useQuery({ from: thisWeekFrom, to: new Date() });
-  const { data: prevWeekSummary } = trpc.analytics.summary.useQuery({ from: prevWeekFrom, to: prevWeekTo });
+  const thisWeekTo = useMemo(() => new Date(), [period]);
+  const { data: thisWeekSummary } = trpc.analytics.summary.useQuery({ from: thisWeekFrom, to: thisWeekTo }, { refetchInterval: REALTIME_INTERVALS.dashboard });
+  const { data: prevWeekSummary } = trpc.analytics.summary.useQuery({ from: prevWeekFrom, to: prevWeekTo }, { refetchInterval: REALTIME_INTERVALS.dashboard });
 
   const weeklyReport = useMemo(() => {
     if (!thisWeekSummary) return null;
