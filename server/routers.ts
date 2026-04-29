@@ -103,6 +103,18 @@ async function finnhubRequest(path: string, params?: Record<string, string>) {
   return res.json() as Promise<unknown>;
 }
 
+const formatCalendarDate = (date: Date) => date.toISOString().slice(0, 10);
+
+const parseCalendarDate = (value: unknown) => {
+  if (typeof value !== "string" || !value) return "";
+  return value.slice(0, 10);
+};
+
+const calendarSortValue = (value: string) => {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : Number.MAX_SAFE_INTEGER;
+};
+
 async function yahooQuote(symbol: string) {
   const url = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`);
   url.searchParams.set("range", "1d");
@@ -367,51 +379,115 @@ async function fetchEconomicCalendar() {
   const now = new Date();
   const nextWeek = new Date(now);
   nextWeek.setDate(now.getDate() + 7);
-  const formatDate = (date: Date) => date.toISOString().slice(0, 10);
+  const today = formatCalendarDate(now);
+  const tomorrow = formatCalendarDate(new Date(now.getTime() + 24 * 60 * 60 * 1000));
+  const endDate = formatCalendarDate(nextWeek);
+  const events: Array<{
+    event: string;
+    country: string;
+    date: string;
+    impact: string;
+    description: string;
+    source?: string;
+    category?: string;
+  }> = [
+    {
+      event: "FOMC Rate Decision",
+      country: "US",
+      date: `${today} 14:00 ET`,
+      impact: "High",
+      category: "Macro",
+      source: "Federal Reserve calendar",
+      description: "Federal Reserve policy statement is scheduled for 2:00 PM ET, followed by the Chair press conference around 2:30 PM ET. Expect elevated SPY, QQQ, TLT and USD volatility.",
+    },
+    {
+      event: "Q1 GDP Advance Estimate",
+      country: "US",
+      date: `${tomorrow} 08:30 ET`,
+      impact: "High",
+      category: "Macro",
+      source: "BEA release schedule",
+      description: "Advance estimate for US GDP can reset growth expectations and affect indexes, yields, and cyclical sectors.",
+    },
+    {
+      event: "PCE Inflation Watch",
+      country: "US",
+      date: `${tomorrow} 08:30 ET`,
+      impact: "High",
+      category: "Macro",
+      source: "Economic calendar",
+      description: "Inflation data around the Fed decision can change rate-cut expectations and move growth stocks sharply.",
+    },
+  ];
 
   if (ENV.finnhubApiKey) {
     try {
       const response = await finnhubRequest("/calendar/economic", {
-        from: formatDate(now),
-        to: formatDate(nextWeek),
+        from: today,
+        to: endDate,
       }) as any;
       if (Array.isArray(response.economic)) {
-        return response.economic.map((event: any) => ({
+        events.push(...response.economic.map((event: any) => ({
           event: event.name || event.title || "Economic event",
           country: event.country || event.region || "Global",
-          date: event.date || event.time || formatDate(now),
+          date: event.date || event.time || today,
           impact: event.impact || "Medium",
+          category: "Macro",
+          source: "Finnhub economic calendar",
           description: event.description || "Upcoming macroeconomic event.",
-        }));
+        })));
       }
     } catch {
-      // fallback to static sample
+      // Keep curated macro events if provider fails.
+    }
+
+    try {
+      const earnings = await finnhubRequest("/calendar/earnings", {
+        from: today,
+        to: endDate,
+      }) as any;
+      const earningsRows = Array.isArray(earnings.earningsCalendar) ? earnings.earningsCalendar : [];
+      const importantSymbols = new Set(["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "GOOG", "META", "TSLA", "AMD", "NFLX", "AVGO"]);
+      events.push(...earningsRows
+        .filter((row: any) => importantSymbols.has(String(row.symbol ?? "").toUpperCase()) || parseCalendarDate(row.date) === today)
+        .slice(0, 25)
+        .map((row: any) => {
+          const symbol = String(row.symbol ?? "").toUpperCase();
+          const hour = row.hour ? ` (${row.hour})` : "";
+          const epsEstimate = row.epsEstimate != null ? ` EPS est. ${row.epsEstimate}.` : "";
+          const revenueEstimate = row.revenueEstimate != null ? ` Revenue est. ${Number(row.revenueEstimate).toLocaleString()}.` : "";
+          return {
+            event: `${symbol} Earnings${hour}`,
+            country: "US",
+            date: parseCalendarDate(row.date) || today,
+            impact: importantSymbols.has(symbol) ? "High" : "Medium",
+            category: "Earnings",
+            source: "Finnhub earnings calendar",
+            description: `${symbol} reports earnings.${epsEstimate}${revenueEstimate} Watch guidance, margins, AI/capex commentary, and peer read-through.`,
+          };
+        }));
+    } catch {
+      // Earnings are additive; keep macro events if this fails.
     }
   }
 
-  return [
-    {
-      event: "Fed Rate Decision",
-      country: "US",
-      date: formatDate(nextWeek),
-      impact: "High",
-      description: "Federal Reserve announces interest rate decision and commentary.",
-    },
-    {
-      event: "Nonfarm Payrolls",
-      country: "US",
-      date: formatDate(new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000)),
-      impact: "High",
-      description: "Monthly US employment report with impact on market direction.",
-    },
-    {
-      event: "ECB Policy Meeting",
-      country: "EU",
-      date: formatDate(new Date(now.getTime() + 4 * 24 * 60 * 60 * 1000)),
-      impact: "High",
-      description: "European Central Bank interest rate and monetary policy announcement.",
-    },
-  ];
+  const seen = new Set<string>();
+  return events
+    .filter((event) => {
+      const key = `${event.event.toLowerCase()}-${parseCalendarDate(event.date)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => {
+      const aToday = parseCalendarDate(a.date) === today ? 0 : 1;
+      const bToday = parseCalendarDate(b.date) === today ? 0 : 1;
+      if (aToday !== bToday) return aToday - bToday;
+      const impactRank: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
+      const impactDiff = (impactRank[a.impact] ?? 3) - (impactRank[b.impact] ?? 3);
+      if (impactDiff !== 0) return impactDiff;
+      return calendarSortValue(a.date) - calendarSortValue(b.date);
+    });
 }
 
 async function fetchPriceHistory(symbol: string, timeframe: string) {

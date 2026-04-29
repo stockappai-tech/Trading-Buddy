@@ -117,18 +117,26 @@ export default function Automation() {
                 <p className="text-sm text-muted-foreground">Loading upcoming events…</p>
               ) : (
                 <div className="space-y-3">
-                  {calendar.data?.slice(0, 3).map((event: any, idx: number) => (
+                  {calendar.data?.slice(0, 8).map((event: any, idx: number) => {
+                    const eventDate = String(event.date ?? "").slice(0, 10);
+                    const isToday = eventDate === new Date().toISOString().slice(0, 10);
+                    return (
                     <div key={idx} className="rounded-xl border border-border p-3">
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-sm font-semibold text-foreground">{event.event}</p>
-                        <Badge variant="outline" className="text-[11px] uppercase tracking-[0.15em]">
-                          {event.impact}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          {isToday && <Badge className="text-[11px] uppercase tracking-[0.15em]">Today</Badge>}
+                          <Badge variant="outline" className="text-[11px] uppercase tracking-[0.15em]">
+                            {event.impact}
+                          </Badge>
+                        </div>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">{event.country} • {event.date}</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {event.category ? `${event.category} • ` : ""}{event.country} • {event.date}
+                      </p>
                       <p className="text-xs text-muted-foreground mt-2">{event.description}</p>
                     </div>
-                  ))}
+                  );})}
                 </div>
               )}
             </CardContent>
