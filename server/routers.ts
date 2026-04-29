@@ -287,6 +287,126 @@ function sanitizePredictionFactors(factors: unknown[], symbol: string, riskRewar
   ];
 }
 
+async function getBestQuote(symbol: string) {
+  if (ENV.finnhubApiKey) {
+    try {
+      const quote = await finnhubRequest("/quote", { symbol }) as any;
+      if (quote?.c > 0) {
+        return {
+          currentPrice: Number(quote.c ?? 0),
+          prevClose: Number(quote.pc ?? 0),
+          change: Number(quote.d ?? 0),
+          changePercent: Number(quote.dp ?? 0),
+          source: "Finnhub",
+        };
+      }
+    } catch {
+      // Try Yahoo below.
+    }
+  }
+
+  try {
+    const quote = await yahooQuote(symbol);
+    return {
+      currentPrice: quote.last,
+      prevClose: quote.prevClose,
+      change: quote.change,
+      changePercent: quote.changePercent,
+      source: "Yahoo",
+    };
+  } catch {
+    return {
+      currentPrice: 0,
+      prevClose: 0,
+      change: 0,
+      changePercent: 0,
+      source: "Unavailable",
+    };
+  }
+}
+
+function formatNewsRecency(value: unknown) {
+  const date = typeof value === "number" ? new Date(value * 1000) : typeof value === "string" ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "recent";
+  const hours = Math.max(0, Math.round((Date.now() - date.getTime()) / 3600000));
+  if (hours < 1) return "under 1h ago";
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+async function fetchPredictionLiveContext(symbol: string) {
+  const quote = await getBestQuote(symbol);
+  const headlines: string[] = [];
+  const seen = new Set<string>();
+
+  if (ENV.newsApiKey) {
+    try {
+      const url = new URL("https://newsapi.org/v2/everything");
+      url.searchParams.set("q", `(${symbol}) AND (stock OR earnings OR guidance OR analyst OR market OR AI)`);
+      url.searchParams.set("language", "en");
+      url.searchParams.set("sortBy", "publishedAt");
+      url.searchParams.set("pageSize", "5");
+      url.searchParams.set("apiKey", ENV.newsApiKey);
+      const res = await fetch(url.toString());
+      if (res.ok) {
+        const data = await res.json() as any;
+        if (data.status === "ok" && Array.isArray(data.articles)) {
+          for (const article of data.articles) {
+            const title = String(article.title ?? "").trim();
+            if (!title || seen.has(title)) continue;
+            seen.add(title);
+            headlines.push(`${title} (${article.source?.name ?? "NewsAPI"}, ${formatNewsRecency(article.publishedAt)})`);
+          }
+        }
+      }
+    } catch {
+      // Fall back to Finnhub company news below.
+    }
+  }
+
+  if (ENV.finnhubApiKey && headlines.length < 3) {
+    try {
+      const today = new Date();
+      const from = new Date(today);
+      from.setDate(today.getDate() - 7);
+      const fmt = (date: Date) => date.toISOString().slice(0, 10);
+      const articles = await finnhubRequest("/company-news", { symbol, from: fmt(from), to: fmt(today) }) as any[];
+      if (Array.isArray(articles)) {
+        for (const article of articles.slice(0, 5)) {
+          const title = String(article.headline ?? "").trim();
+          if (!title || seen.has(title)) continue;
+          seen.add(title);
+          headlines.push(`${title} (${article.source ?? "Finnhub"}, ${formatNewsRecency(article.datetime)})`);
+          if (headlines.length >= 5) break;
+        }
+      }
+    } catch {
+      // News is useful, but prediction should not fail without it.
+    }
+  }
+
+  let catalysts: string[] = [];
+  try {
+    const calendar = await fetchEconomicCalendar();
+    catalysts = calendar
+      .filter((event) => {
+        const eventSymbol = "symbol" in event && event.symbol ? String(event.symbol).toUpperCase() : "";
+        return eventSymbol === symbol || event.event.toUpperCase().includes(symbol);
+      })
+      .slice(0, 3)
+      .map((event) => `${event.event} on ${event.date} (${event.impact} impact): ${event.description}`);
+  } catch {
+    catalysts = [];
+  }
+
+  return {
+    quote,
+    headlines,
+    catalysts,
+    asOf: new Date().toISOString(),
+  };
+}
+
 const TRADIER_API_BASE = "https://api.tradier.com/v1";
 
 async function tradierRequest(token: string, path: string, method: string = "GET", body?: URLSearchParams | Record<string, string>) {
@@ -1030,16 +1150,11 @@ export const appRouter = router({
         const rewardPerShare = target > 0 ? Math.abs(target - entry) : 0;
         const riskReward = riskPerShare > 0 && rewardPerShare > 0 ? rewardPerShare / riskPerShare : null;
 
-        // Get current market data
-        let currentPrice = 0;
-        try {
-          if (ENV.finnhubApiKey) {
-            const quote = await finnhubRequest("/quote", { symbol: input.symbol }) as any;
-            currentPrice = quote.c || 0;
-          }
-        } catch (error) {
-          console.warn("Could not fetch current price for prediction:", error);
-        }
+        // Get live market context so predictions are grounded in current info.
+        const liveContext = await fetchPredictionLiveContext(input.symbol);
+        const currentPrice = liveContext.quote.currentPrice;
+        const liveHeadlineText = liveContext.headlines.length > 0 ? liveContext.headlines.map((headline) => `- ${headline}`).join("\n") : "- No fresh headlines found from configured providers.";
+        const catalystText = liveContext.catalysts.length > 0 ? liveContext.catalysts.map((catalyst) => `- ${catalyst}`).join("\n") : "- No symbol-specific catalyst found in the current calendar feed.";
 
         // Use LLM to analyze patterns and make prediction
         const response = await invokeLLM({
@@ -1048,6 +1163,7 @@ export const appRouter = router({
               role: "system",
               content: `You are an expert trading analyst. Analyze a proposed trade using current market context, catalyst awareness, risk/reward, price location, volatility risk, and execution quality.
 If personal history is provided, you may use it quietly as one signal. Never mention missing personal trade history, closed-trade counts, lack of edge, or lack of expertise. Do not apologize for missing history. Give the trader useful market analysis immediately.
+Use the live quote, headlines, and catalysts supplied by the app. If no fresh headline is supplied, say the live news feed has no clear fresh catalyst instead of inventing one.
               
 Return a JSON analysis with:
 - prediction: "bullish", "bearish", or "neutral"
@@ -1071,8 +1187,15 @@ TRADE PROPOSAL:
 - Timeframe: ${input.timeframe}
 
 CURRENT MARKET:
-- Current Price: $${currentPrice.toFixed(2)}
+- Current Price: $${currentPrice.toFixed(2)} (${liveContext.quote.source}, as of ${liveContext.asOf})
+- Day Change: ${liveContext.quote.change >= 0 ? "+" : ""}${liveContext.quote.change.toFixed(2)} (${liveContext.quote.changePercent >= 0 ? "+" : ""}${liveContext.quote.changePercent.toFixed(2)}%)
 - Risk/Reward: ${riskReward ? `${riskReward.toFixed(2)}:1` : "not fully defined"}
+
+LIVE HEADLINES:
+${liveHeadlineText}
+
+CURRENT CATALYSTS:
+${catalystText}
 
 ${hasEnoughPersonalHistory ? `PERSONAL PERFORMANCE CONTEXT:
 - Win Rate: ${(winRate * 100).toFixed(1)}%

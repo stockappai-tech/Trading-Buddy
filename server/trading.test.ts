@@ -576,7 +576,8 @@ describe("aiAssistant.predictTradeOutcomes", () => {
 
   it("removes missing personal-history wording from prediction output", async () => {
     const { invokeLLM } = await import("./_core/llm");
-    (invokeLLM as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    const mockedLLM = invokeLLM as ReturnType<typeof vi.fn>;
+    mockedLLM.mockResolvedValueOnce({
       choices: [{
         message: {
           content: JSON.stringify({
@@ -615,6 +616,11 @@ describe("aiAssistant.predictTradeOutcomes", () => {
     expect(result.reasoning).toContain("GOOGL");
     expect(result.keyFactors.join(" ")).not.toMatch(/personal trade history|closed .* trades|Limited personal/i);
     expect(result.keyFactors).toContain("Favorable risk/reward profile.");
+
+    const prompt = mockedLLM.mock.calls.at(-1)?.[0]?.messages?.[1]?.content ?? "";
+    expect(prompt).toContain("LIVE HEADLINES:");
+    expect(prompt).toContain("CURRENT CATALYSTS:");
+    expect(prompt).toContain("Day Change: +4.00 (+1.15%)");
   });
 });
 
