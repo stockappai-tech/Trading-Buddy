@@ -708,6 +708,8 @@ describe("aiAssistant.predictTradeOutcomes", () => {
 
   it("removes missing personal-history wording from prediction output", async () => {
     const { invokeLLM } = await import("./_core/llm");
+    const { ENV } = await import("./_core/env");
+    const originalNewsApiKey = ENV.newsApiKey;
     const mockedLLM = invokeLLM as ReturnType<typeof vi.fn>;
     mockedLLM.mockResolvedValueOnce({
       choices: [{
@@ -727,32 +729,59 @@ describe("aiAssistant.predictTradeOutcomes", () => {
         },
       }],
     });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ c: 352, pc: 348, d: 4, dp: 1.15, h: 354, l: 347, o: 349 }),
-    }));
+    (ENV as any).newsApiKey = "test-news-api-key";
+    try {
+      vi.stubGlobal("fetch", vi.fn().mockImplementation(async (url: string) => {
+        if (String(url).includes("newsapi.org")) {
+          return {
+            ok: true,
+            json: async () => ({
+              status: "ok",
+              articles: [{
+                title: "GOOGL jumps after fresh AI catalyst",
+                description: "Alphabet stock moves on AI news.",
+                url: "https://example.com/googl-ai",
+                source: { name: "Example News" },
+                publishedAt: "2026-04-29T14:00:00Z",
+              }],
+            }),
+          };
+        }
+        return {
+          ok: true,
+          json: async () => ({ c: 352, pc: 348, d: 4, dp: 1.15, h: 354, l: 347, o: 349 }),
+        };
+      }));
 
-    const ctx = createMockContext({ user: { ...createMockContext().user!, role: "admin" } });
-    const caller = appRouter.createCaller(ctx);
-    const result = await caller.aiAssistant.predictTradeOutcomes({
-      symbol: "GOOGL",
-      side: "buy",
-      entryPrice: "352",
-      quantity: "10",
-      stopLoss: "347",
-      takeProfit: "360",
-      timeframe: "1D",
-    });
+      const ctx = createMockContext({ user: { ...createMockContext().user!, role: "admin" } });
+      const caller = appRouter.createCaller(ctx);
+      const result = await caller.aiAssistant.predictTradeOutcomes({
+        symbol: "GOOGL",
+        side: "buy",
+        entryPrice: "352",
+        quantity: "10",
+        stopLoss: "347",
+        takeProfit: "360",
+        timeframe: "1D",
+      });
 
-    expect(result.reasoning).not.toMatch(/personal trade history|closed .* trades|edge established/i);
-    expect(result.reasoning).toContain("GOOGL");
-    expect(result.keyFactors.join(" ")).not.toMatch(/personal trade history|closed .* trades|Limited personal/i);
-    expect(result.keyFactors).toContain("Favorable risk/reward profile.");
+      expect(result.reasoning).not.toMatch(/personal trade history|closed .* trades|edge established/i);
+      expect(result.reasoning).toContain("GOOGL");
+      expect(result.keyFactors.join(" ")).not.toMatch(/personal trade history|closed .* trades|Limited personal/i);
+      expect(result.keyFactors).toContain("Favorable risk/reward profile.");
+      expect(result.sources[0]).toMatchObject({
+        title: "GOOGL jumps after fresh AI catalyst",
+        url: "https://example.com/googl-ai",
+      });
 
-    const prompt = mockedLLM.mock.calls.at(-1)?.[0]?.messages?.[1]?.content ?? "";
-    expect(prompt).toContain("LIVE HEADLINES:");
-    expect(prompt).toContain("CURRENT CATALYSTS:");
-    expect(prompt).toContain("Day Change: +4.00 (+1.15%)");
+      const prompt = mockedLLM.mock.calls.at(-1)?.[0]?.messages?.[1]?.content ?? "";
+      expect(prompt).toContain("LIVE HEADLINES:");
+      expect(prompt).toContain("[S1] GOOGL jumps after fresh AI catalyst");
+      expect(prompt).toContain("CURRENT CATALYSTS:");
+      expect(prompt).toContain("Day Change: +4.00 (+1.15%)");
+    } finally {
+      (ENV as any).newsApiKey = originalNewsApiKey;
+    }
   });
 });
 

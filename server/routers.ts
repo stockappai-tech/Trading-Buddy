@@ -336,8 +336,14 @@ function formatNewsRecency(value: unknown) {
 
 async function fetchPredictionLiveContext(symbol: string) {
   const quote = await getBestQuote(symbol);
-  const headlines: string[] = [];
+  const sources: Array<{ title: string; source: string; url: string; recency: string; publishedAt?: string; provider: string }> = [];
   const seen = new Set<string>();
+  const addSource = (source: { title: string; source: string; url?: string; recency: string; publishedAt?: string; provider: string }) => {
+    const title = source.title.trim();
+    if (!title || seen.has(title)) return;
+    seen.add(title);
+    sources.push({ ...source, title, url: source.url ?? "" });
+  };
 
   if (ENV.newsApiKey) {
     try {
@@ -353,9 +359,14 @@ async function fetchPredictionLiveContext(symbol: string) {
         if (data.status === "ok" && Array.isArray(data.articles)) {
           for (const article of data.articles) {
             const title = String(article.title ?? "").trim();
-            if (!title || seen.has(title)) continue;
-            seen.add(title);
-            headlines.push(`${title} (${article.source?.name ?? "NewsAPI"}, ${formatNewsRecency(article.publishedAt)})`);
+            addSource({
+              title,
+              source: article.source?.name ?? "NewsAPI",
+              url: article.url ?? "",
+              recency: formatNewsRecency(article.publishedAt),
+              publishedAt: article.publishedAt,
+              provider: "NewsAPI",
+            });
           }
         }
       }
@@ -364,7 +375,7 @@ async function fetchPredictionLiveContext(symbol: string) {
     }
   }
 
-  if (ENV.finnhubApiKey && headlines.length < 3) {
+  if (ENV.finnhubApiKey && sources.length < 3) {
     try {
       const today = new Date();
       const from = new Date(today);
@@ -374,10 +385,15 @@ async function fetchPredictionLiveContext(symbol: string) {
       if (Array.isArray(articles)) {
         for (const article of articles.slice(0, 5)) {
           const title = String(article.headline ?? "").trim();
-          if (!title || seen.has(title)) continue;
-          seen.add(title);
-          headlines.push(`${title} (${article.source ?? "Finnhub"}, ${formatNewsRecency(article.datetime)})`);
-          if (headlines.length >= 5) break;
+          addSource({
+            title,
+            source: article.source ?? "Finnhub",
+            url: article.url ?? "",
+            recency: formatNewsRecency(article.datetime),
+            publishedAt: article.datetime ? new Date(article.datetime * 1000).toISOString() : undefined,
+            provider: "Finnhub",
+          });
+          if (sources.length >= 5) break;
         }
       }
     } catch {
@@ -401,7 +417,8 @@ async function fetchPredictionLiveContext(symbol: string) {
 
   return {
     quote,
-    headlines,
+    headlines: sources.map((source, index) => `[S${index + 1}] ${source.title} (${source.source}, ${source.recency})`),
+    sources: sources.slice(0, 5),
     catalysts,
     asOf: new Date().toISOString(),
   };
@@ -1173,7 +1190,7 @@ export const appRouter = router({
               role: "system",
               content: `You are an expert trading analyst. Analyze a proposed trade using current market context, catalyst awareness, risk/reward, price location, volatility risk, and execution quality.
 If personal history is provided, you may use it quietly as one signal. Never mention missing personal trade history, closed-trade counts, lack of edge, or lack of expertise. Do not apologize for missing history. Give the trader useful market analysis immediately.
-Use the live quote, headlines, and catalysts supplied by the app. If no fresh headline is supplied, say the live news feed has no clear fresh catalyst instead of inventing one.
+Use the live quote, headlines, and catalysts supplied by the app. If no fresh headline is supplied, say the live news feed has no clear fresh catalyst instead of inventing one. When referencing a headline, cite its source marker like [S1] or [S2].
               
 Return a JSON analysis with:
 - prediction: "bullish", "bearish", or "neutral"
@@ -1251,6 +1268,15 @@ ${symbolTrades.slice(-10).map(t =>
           expectedReturn: result.expectedReturn || 0,
           riskScore: Math.min(10, Math.max(1, result.riskScore || 5)),
           keyFactors: sanitizePredictionFactors(Array.isArray(result.keyFactors) ? result.keyFactors : [], input.symbol, riskReward),
+          sources: liveContext.sources,
+          liveContext: {
+            asOf: liveContext.asOf,
+            quoteSource: liveContext.quote.source,
+            currentPrice,
+            change: liveContext.quote.change,
+            changePercent: liveContext.quote.changePercent,
+            catalysts: liveContext.catalysts,
+          },
         };
       }),
 

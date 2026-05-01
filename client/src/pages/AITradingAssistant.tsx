@@ -19,6 +19,7 @@ import {
   Zap,
   RefreshCw,
   Crown,
+  ExternalLink,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -331,6 +332,36 @@ export default function AITradingAssistant() {
                               <Badge key={index} variant="outline">
                                 {factor}
                               </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {asArray<any>(predictTrade.data.sources).length > 0 && (
+                        <div>
+                          <Label className="text-sm font-medium">Sources</Label>
+                          <div className="mt-2 space-y-2">
+                            {asArray<any>(predictTrade.data.sources).map((source: any, index: number) => (
+                              <a
+                                key={`${source.url || source.title}-${index}`}
+                                href={source.url || undefined}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`block rounded-lg border border-border p-3 text-xs transition-colors ${source.url ? "hover:border-primary/50 hover:bg-muted/20" : "cursor-default"}`}
+                                onClick={(event) => {
+                                  if (!source.url) event.preventDefault();
+                                }}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold text-foreground">[S{index + 1}] {source.title}</p>
+                                    <p className="mt-1 text-muted-foreground">
+                                      {source.source ?? "Market source"}{source.recency ? ` • ${source.recency}` : ""}
+                                    </p>
+                                  </div>
+                                  {source.url && <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />}
+                                </div>
+                              </a>
                             ))}
                           </div>
                         </div>
