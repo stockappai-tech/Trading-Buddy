@@ -2890,33 +2890,11 @@ Only return valid JSON, no markdown or explanation.${openCtx}`,
             const filteredPuts = input.expiration ? puts.filter((row: any) => row.expirationDate === input.expiration) : puts.slice(0, 20);
             return { symbol, latestPrice, expirationDates: expirations, calls: filteredCalls, puts: filteredPuts };
           } catch {
-            // fallback to sample below
+            // Return empty data instead of fake/random options.
           }
         }
 
-        const samplePrice = 150;
-        const sampleExpirations = [
-          "2026-05-16",
-          "2026-06-20",
-          "2026-09-19",
-        ];
-        const sampleOption = (type: "call" | "put", strike: number) => ({
-          strike,
-          bid: Number((Math.random() * 5 + 1).toFixed(2)),
-          ask: Number((Math.random() * 5 + 1.5).toFixed(2)),
-          lastPrice: Number((Math.random() * 5 + 1.2).toFixed(2)),
-          impliedVolatility: Number((Math.random() * 0.6 + 0.2).toFixed(2)),
-          openInterest: Math.floor(Math.random() * 2000 + 100),
-          expirationDate: sampleExpirations[0],
-          type,
-        });
-        return {
-          symbol,
-          latestPrice: samplePrice,
-          expirationDates: sampleExpirations,
-          calls: [sampleOption("call", 145), sampleOption("call", 150), sampleOption("call", 155)],
-          puts: [sampleOption("put", 145), sampleOption("put", 150), sampleOption("put", 155)],
-        };
+        return { symbol, latestPrice: 0, expirationDates: [], calls: [], puts: [] };
       }),
 
     cryptoQuotes: protectedProcedure

@@ -104,14 +104,16 @@ export default function MarketData() {
 
   const latestCryptoQuote = cryptoQuotes.data?.[0];
   const latestStockQuote = stockQuotes.data?.[0];
+  const optionExpirations = optionsChain.data?.expirationDates ?? [];
+  const optionCalls = optionsChain.data?.calls ?? [];
+  const optionPuts = optionsChain.data?.puts ?? [];
   const isLoading = historical1D.isLoading || historical1W.isLoading || historical1M.isLoading;
   const marketDataError =
     historical1D.error?.message ||
     historical1W.error?.message ||
     historical1M.error?.message ||
     stockQuotes.error?.message ||
-    cryptoQuotes.error?.message ||
-    optionsChain.error?.message;
+    cryptoQuotes.error?.message;
 
   return (
     <DashboardLayout>
@@ -346,6 +348,11 @@ export default function MarketData() {
                 <CardTitle>Options Chain for {symbol.toUpperCase()}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {optionsChain.error?.message && (
+                  <div className="rounded-lg border border-border bg-muted/20 p-3 text-xs text-muted-foreground">
+                    Options data could not load: {optionsChain.error.message}
+                  </div>
+                )}
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="expiration">Expiration</Label>
@@ -354,17 +361,20 @@ export default function MarketData() {
                         <SelectValue placeholder="Select expiry" />
                       </SelectTrigger>
                       <SelectContent>
-                        {optionsChain.data?.expirationDates?.map((expiry: string) => (
+                        {optionExpirations.map((expiry: string) => (
                           <SelectItem key={expiry} value={expiry}>
                             {expiry}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    {!optionsChain.isLoading && optionExpirations.length === 0 && (
+                      <p className="text-xs text-muted-foreground">No live options expirations available for this symbol.</p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label>Underlying Price</Label>
-                    <p className="text-xl font-semibold">${optionsChain.data?.latestPrice?.toFixed(2) ?? "--"}</p>
+                    <p className="text-xl font-semibold">{optionsChain.data?.latestPrice ? `$${optionsChain.data.latestPrice.toFixed(2)}` : "--"}</p>
                   </div>
                 </div>
 
@@ -382,14 +392,14 @@ export default function MarketData() {
                           </tr>
                         </thead>
                         <tbody>
-                          {optionsChain.data?.calls?.map((option: any) => (
+                          {optionCalls.length > 0 ? optionCalls.map((option: any) => (
                             <tr key={`${option.strike}-call`} className="border-t border-border even:bg-muted/50">
                               <td className="px-3 py-2">${option.strike}</td>
                               <td className="px-3 py-2">${option.bid.toFixed(2)}</td>
                               <td className="px-3 py-2">${option.ask.toFixed(2)}</td>
                               <td className="px-3 py-2">{(option.impliedVolatility * 100).toFixed(1)}%</td>
                             </tr>
-                          )) ?? <tr><td colSpan={4} className="px-3 py-4 text-center text-sm text-muted-foreground">No options available</td></tr>}
+                          )) : <tr><td colSpan={4} className="px-3 py-4 text-center text-sm text-muted-foreground">No live calls available</td></tr>}
                         </tbody>
                       </table>
                     </div>
@@ -408,14 +418,14 @@ export default function MarketData() {
                           </tr>
                         </thead>
                         <tbody>
-                          {optionsChain.data?.puts?.map((option: any) => (
+                          {optionPuts.length > 0 ? optionPuts.map((option: any) => (
                             <tr key={`${option.strike}-put`} className="border-t border-border even:bg-muted/50">
                               <td className="px-3 py-2">${option.strike}</td>
                               <td className="px-3 py-2">${option.bid.toFixed(2)}</td>
                               <td className="px-3 py-2">${option.ask.toFixed(2)}</td>
                               <td className="px-3 py-2">{(option.impliedVolatility * 100).toFixed(1)}%</td>
                             </tr>
-                          )) ?? <tr><td colSpan={4} className="px-3 py-4 text-center text-sm text-muted-foreground">No options available</td></tr>}
+                          )) : <tr><td colSpan={4} className="px-3 py-4 text-center text-sm text-muted-foreground">No live puts available</td></tr>}
                         </tbody>
                       </table>
                     </div>

@@ -893,3 +893,26 @@ describe("market.news (Finnhub)", () => {
     }
   });
 });
+
+describe("market.optionsChain", () => {
+  it("returns an empty chain instead of fake/random options when live data is unavailable", async () => {
+    const { ENV } = await import("./_core/env");
+    const originalFinnhubApiKey = ENV.finnhubApiKey;
+    (ENV as any).finnhubApiKey = "";
+    try {
+      const ctx = createMockContext();
+      const caller = appRouter.createCaller(ctx);
+      const result = await caller.market.optionsChain({ symbol: "AAPL" });
+
+      expect(result).toMatchObject({
+        symbol: "AAPL",
+        latestPrice: 0,
+        expirationDates: [],
+        calls: [],
+        puts: [],
+      });
+    } finally {
+      (ENV as any).finnhubApiKey = originalFinnhubApiKey;
+    }
+  });
+});

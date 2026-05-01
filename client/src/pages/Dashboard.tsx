@@ -37,9 +37,9 @@ import { useLocation } from "wouter";
 
 type Period = "1D" | "1W" | "1M" | "6M" | "1Y";
 
-function getPeriodDates(period: Period): { from: Date; to: Date } {
-  const to = new Date();
-  const from = new Date();
+function getPeriodDates(period: Period, now = new Date()): { from: Date; to: Date } {
+  const to = new Date(now);
+  const from = new Date(now);
   if (period === "1D") from.setDate(from.getDate() - 1);
   else if (period === "1W") from.setDate(from.getDate() - 7);
   else if (period === "1M") from.setMonth(from.getMonth() - 1);
@@ -55,8 +55,14 @@ function formatPnl(val: number) {
 
 export default function Dashboard() {
   const [period, setPeriod] = useState<Period>("1M");
+  const [rangeNow, setRangeNow] = useState(() => new Date());
   const [, navigate] = useLocation();
-  const { from, to } = useMemo(() => getPeriodDates(period), [period]);
+  const { from, to } = useMemo(() => getPeriodDates(period, rangeNow), [period, rangeNow]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setRangeNow(new Date()), REALTIME_INTERVALS.dashboard);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const { data: summary, isLoading: summaryLoading } = trpc.analytics.summary.useQuery({ from, to }, { refetchInterval: REALTIME_INTERVALS.dashboard });
   const { data: pnlData, isLoading: pnlLoading } = trpc.analytics.pnlByPeriod.useQuery({ from, to }, { refetchInterval: REALTIME_INTERVALS.dashboard });
@@ -136,10 +142,10 @@ export default function Dashboard() {
   const { data: allTrades } = trpc.trades.list.useQuery({}, { refetchInterval: REALTIME_INTERVALS.dashboard });
 
   // ─── Weekly Report (last 7 days vs prior 7 days) ──────────────────────────
-  const thisWeekFrom = useMemo(() => { const d = new Date(); d.setDate(d.getDate() - 7); return d; }, []);
-  const prevWeekFrom = useMemo(() => { const d = new Date(); d.setDate(d.getDate() - 14); return d; }, []);
-  const prevWeekTo = useMemo(() => { const d = new Date(); d.setDate(d.getDate() - 7); return d; }, []);
-  const thisWeekTo = useMemo(() => new Date(), [period]);
+  const thisWeekFrom = useMemo(() => { const d = new Date(rangeNow); d.setDate(d.getDate() - 7); return d; }, [rangeNow]);
+  const prevWeekFrom = useMemo(() => { const d = new Date(rangeNow); d.setDate(d.getDate() - 14); return d; }, [rangeNow]);
+  const prevWeekTo = useMemo(() => { const d = new Date(rangeNow); d.setDate(d.getDate() - 7); return d; }, [rangeNow]);
+  const thisWeekTo = useMemo(() => new Date(rangeNow), [rangeNow]);
   const { data: thisWeekSummary } = trpc.analytics.summary.useQuery({ from: thisWeekFrom, to: thisWeekTo }, { refetchInterval: REALTIME_INTERVALS.dashboard });
   const { data: prevWeekSummary } = trpc.analytics.summary.useQuery({ from: prevWeekFrom, to: prevWeekTo }, { refetchInterval: REALTIME_INTERVALS.dashboard });
 
@@ -152,9 +158,10 @@ export default function Dashboard() {
   }, [thisWeekSummary, prevWeekSummary]);
 
   // ─── Pattern Alerts (computed from time-of-day + symbol performance) ─────
-  const sixMonthsAgo = useMemo(() => { const d = new Date(); d.setMonth(d.getMonth() - 6); return d; }, []);
-  const { data: timeOfDayData } = trpc.analytics.timeOfDay.useQuery({ from: sixMonthsAgo, to: new Date() });
-  const { data: symbolData } = trpc.analytics.symbolPerformance.useQuery({ from: sixMonthsAgo, to: new Date() });
+  const sixMonthsAgo = useMemo(() => { const d = new Date(rangeNow); d.setMonth(d.getMonth() - 6); return d; }, [rangeNow]);
+  const patternTo = useMemo(() => new Date(rangeNow), [rangeNow]);
+  const { data: timeOfDayData } = trpc.analytics.timeOfDay.useQuery({ from: sixMonthsAgo, to: patternTo }, { refetchInterval: REALTIME_INTERVALS.dashboard });
+  const { data: symbolData } = trpc.analytics.symbolPerformance.useQuery({ from: sixMonthsAgo, to: patternTo }, { refetchInterval: REALTIME_INTERVALS.dashboard });
 
   const patternAlerts = useMemo(() => {
     const alerts: { icon: string; message: string; severity: "warning" | "danger" }[] = [];
